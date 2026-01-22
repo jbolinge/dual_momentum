@@ -46,7 +46,7 @@ class TestFormatOutput:
         assert "8.00%" in output  # VOO 3m
         assert "12.00%" in output  # VOO 6m
         assert "8.33%" in output  # VOO weighted
-        assert "Winner: VOO" in output
+        assert "Signal: VOO" in output
 
     def test_format_output_multiple_winners(self):
         """Test output format with multiple winners (tie)."""
@@ -75,7 +75,7 @@ class TestFormatOutput:
 
         output = format_output(voo, vxus, treasury, winners)
 
-        assert "Winners: VOO, VXUS" in output
+        assert "Signal: VOO, VXUS" in output
 
 
 class TestMain:
@@ -128,4 +128,4 @@ class TestMain:
         assert "VXUS" in output
         assert "Treasury" in output
         assert "1-Month" in output or "1m" in output.lower()
-        assert "Winner" in output
+        assert "Signal" in output

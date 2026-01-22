@@ -93,7 +93,7 @@ class TestCLIIntegration:
         assert "VOO:" in result.stdout
         assert "VXUS:" in result.stdout
         assert "Treasury:" in result.stdout
-        assert "Winner" in result.stdout
+        assert "Signal" in result.stdout
 
     def test_cli_output_structure(self):
         """Test that CLI output has correct structure."""

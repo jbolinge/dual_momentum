@@ -86,10 +86,10 @@ def format_output(
 
     lines.append("=" * 40)
     if len(winners) == 1:
-        lines.append(f"Winner: {winners[0].name}")
+        lines.append(f"Signal: {winners[0].name}")
     else:
         winner_names = ", ".join(w.name for w in winners)
-        lines.append(f"Winners: {winner_names}")
+        lines.append(f"Signal: {winner_names}")
 
     return "\n".join(lines)
 

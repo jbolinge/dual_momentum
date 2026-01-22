@@ -53,7 +53,7 @@ Treasury:
   Weighted:    1.04%
 
 ========================================
-Winner: VXUS
+Signal: VXUS
 ```
 
 ## Configuration
