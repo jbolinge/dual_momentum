@@ -3,6 +3,7 @@ name = "dm"
 version = "0.1.0"
 description = "Dual momentum strategy calculator comparing VOO/VXUS returns against treasury rates"
 readme = "README.md"
+license = "GPL-3.0-or-later"
 requires-python = ">=3.12"
 dependencies = [
     "fredapi>=0.5.2",
