@@ -15,7 +15,13 @@ uv sync
 # Run the CLI
 uv run dm
 
-# Run tests
+# Run unit tests only (fast, no external API calls)
+uv run pytest -m "not integration"
+
+# Run integration tests only (calls real APIs)
+uv run pytest -m integration
+
+# Run all tests
 uv run pytest
 
 # Run a single test
