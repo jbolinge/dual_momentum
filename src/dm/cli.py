@@ -96,7 +96,13 @@ def format_output(
 
 def main():
     """Main entry point for the dm CLI."""
-    warnings.filterwarnings("ignore")
+    # Suppress yfinance's internal pandas deprecation warnings
+    # See: https://github.com/ranaroussi/yfinance/issues/1837
+    warnings.filterwarnings(
+        "ignore",
+        message=".*utcnow.*deprecated.*",
+        module="yfinance.*",
+    )
 
     today = date.today()
 
