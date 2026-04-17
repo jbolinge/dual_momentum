@@ -70,6 +70,26 @@ def _get_price_twelvedata(symbol: str, target_date: date) -> float:
     return _select_latest_on_or_before(bars, target_date, symbol)
 
 
+def _get_price_yfinance(symbol: str, target_date: date) -> float:
+    """Fetch closing price from yfinance for `symbol` on or before `target_date`."""
+    ticker = yf.Ticker(symbol)
+
+    # yfinance `end` is exclusive; add a day so target_date is included.
+    start_date = target_date - timedelta(days=_PRICE_WINDOW_DAYS)
+    end_date = target_date + timedelta(days=1)
+    history = ticker.history(start=start_date, end=end_date)
+
+    if history.empty:
+        raise ValueError(f"No price data found for {symbol}")
+
+    history.index = history.index.tz_localize(None)
+    bars = [
+        (ts.date(), float(close))
+        for ts, close in zip(history.index, history["Close"])
+    ]
+    return _select_latest_on_or_before(bars, target_date, symbol)
+
+
 def get_price(symbol: str, target_date: date) -> float:
     """Fetch closing price for a security on or before target date.
 
@@ -80,25 +100,7 @@ def get_price(symbol: str, target_date: date) -> float:
     Returns:
         Closing price. If no data for exact date, returns most recent prior.
     """
-    ticker = yf.Ticker(symbol)
-
-    # Fetch extra days to ensure we have data before target date
-    start_date = target_date - timedelta(days=10)
-    end_date = target_date + timedelta(days=1)
-
-    history = ticker.history(start=start_date, end=end_date)
-
-    if history.empty:
-        raise ValueError(f"No price data found for {symbol}")
-
-    # Filter to dates on or before target, get most recent
-    history.index = history.index.tz_localize(None)
-    valid_dates = history[history.index.date <= target_date]
-
-    if valid_dates.empty:
-        raise ValueError(f"No price data found for {symbol} on or before {target_date}")
-
-    return float(valid_dates["Close"].iloc[-1])
+    return _get_price_yfinance(symbol, target_date)
 
 
 def get_treasury_rate(target_date: date) -> float:
