@@ -124,6 +124,22 @@ def _get_price_yfinance(symbol: str, target_date: date) -> float:
     return select_price_on_or_before(bars, target_date, symbol)
 
 
+def _call_with_fallback(primary, fallback):
+    """Run `primary()`; on any exception, warn once per process and run `fallback()`."""
+    global _fallback_warned
+    try:
+        return primary()
+    except Exception as twelvedata_error:
+        if not _fallback_warned:
+            warnings.warn(
+                f"TwelveData unavailable ({twelvedata_error}); using yfinance fallback",
+                TwelveDataFallbackWarning,
+                stacklevel=3,
+            )
+            _fallback_warned = True
+        return fallback()
+
+
 def get_price(symbol: str, target_date: date) -> float:
     """Fetch closing price for a security on or before target date.
 
@@ -136,18 +152,25 @@ def get_price(symbol: str, target_date: date) -> float:
     Returns:
         Closing price. If no data for exact date, returns most recent prior.
     """
-    global _fallback_warned
-    try:
-        return _get_price_twelvedata(symbol, target_date)
-    except Exception as twelvedata_error:
-        if not _fallback_warned:
-            warnings.warn(
-                f"TwelveData unavailable ({twelvedata_error}); using yfinance fallback",
-                TwelveDataFallbackWarning,
-                stacklevel=2,
-            )
-            _fallback_warned = True
-        return _get_price_yfinance(symbol, target_date)
+    return _call_with_fallback(
+        lambda: _get_price_twelvedata(symbol, target_date),
+        lambda: _get_price_yfinance(symbol, target_date),
+    )
+
+
+def get_price_history(
+    symbol: str, start_date: date, end_date: date
+) -> list[tuple[date, float]]:
+    """Fetch daily close bars for a symbol in [start_date, end_date].
+
+    Tries TwelveData first; on any failure, warns and falls back to yfinance.
+    Use `select_price_on_or_before` to pick a single target date out of the
+    returned list — one wide-window fetch serves many target-date lookups.
+    """
+    return _call_with_fallback(
+        lambda: _get_price_history_twelvedata(symbol, start_date, end_date),
+        lambda: _get_price_history_yfinance(symbol, start_date, end_date),
+    )
 
 
 def get_treasury_rate(target_date: date) -> float:
