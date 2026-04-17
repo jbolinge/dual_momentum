@@ -13,6 +13,7 @@ from dm.data import (
     _get_price_twelvedata,
     _get_price_yfinance,
     get_price,
+    get_price_history,
     get_treasury_rate,
 )
 
@@ -492,3 +493,65 @@ class TestGetPriceHistoryYFinance:
             _get_price_history_yfinance(
                 "VOO", date(2024, 1, 1), date(2024, 1, 10)
             )
+
+
+class TestGetPriceHistoryFallback:
+    """Tests for `get_price_history` — TwelveData-first with yfinance fallback."""
+
+    @patch("dm.data._get_price_history_yfinance")
+    @patch("dm.data._get_price_history_twelvedata")
+    def test_uses_twelvedata_when_successful(self, mock_td, mock_yf, recwarn):
+        bars = [(date(2024, 1, 10), 102.0)]
+        mock_td.return_value = bars
+
+        result = get_price_history("VOO", date(2024, 1, 1), date(2024, 1, 10))
+
+        assert result == bars
+        mock_td.assert_called_once_with("VOO", date(2024, 1, 1), date(2024, 1, 10))
+        mock_yf.assert_not_called()
+        assert [w for w in recwarn.list if issubclass(w.category, UserWarning)] == []
+
+    @patch("dm.data._get_price_history_yfinance")
+    @patch("dm.data._get_price_history_twelvedata")
+    def test_falls_back_on_twelvedata_error(self, mock_td, mock_yf):
+        mock_td.side_effect = RuntimeError("Rate limit")
+        mock_yf.return_value = [(date(2024, 1, 10), 99.0)]
+
+        with pytest.warns(UserWarning, match="yfinance fallback"):
+            result = get_price_history("VOO", date(2024, 1, 1), date(2024, 1, 10))
+
+        assert result == [(date(2024, 1, 10), 99.0)]
+        mock_yf.assert_called_once_with("VOO", date(2024, 1, 1), date(2024, 1, 10))
+
+    @patch("dm.data._get_price_history_yfinance")
+    @patch("dm.data._get_price_history_twelvedata")
+    def test_raises_when_both_fail(self, mock_td, mock_yf):
+        mock_td.side_effect = RuntimeError("TD down")
+        mock_yf.side_effect = ValueError("yfinance empty")
+
+        with pytest.warns(UserWarning, match="yfinance fallback"):
+            with pytest.raises(ValueError, match="yfinance empty"):
+                get_price_history("VOO", date(2024, 1, 1), date(2024, 1, 10))
+
+    @patch("dm.data._get_price_history_yfinance")
+    @patch("dm.data._get_price_history_twelvedata")
+    @patch("dm.data._get_price_yfinance")
+    @patch("dm.data._get_price_twelvedata")
+    def test_shares_warning_latch_with_get_price(
+        self, mock_td_single, mock_yf_single, mock_td_hist, mock_yf_hist, recwarn
+    ):
+        """If get_price already warned, get_price_history shouldn't warn again."""
+        mock_td_single.side_effect = RuntimeError("down")
+        mock_yf_single.return_value = 100.0
+        mock_td_hist.side_effect = RuntimeError("down")
+        mock_yf_hist.return_value = [(date(2024, 1, 10), 99.0)]
+
+        # First call through get_price — emits the warning
+        get_price("VOO", date(2024, 1, 10))
+        # Second call through get_price_history — latch should suppress it
+        get_price_history("VOO", date(2024, 1, 1), date(2024, 1, 10))
+
+        fallback_warnings = [
+            w for w in recwarn.list if issubclass(w.category, UserWarning)
+        ]
+        assert len(fallback_warnings) == 1
