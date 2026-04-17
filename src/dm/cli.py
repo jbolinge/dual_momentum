@@ -2,10 +2,15 @@
 
 import sys
 import warnings
-from datetime import date
+from datetime import date, timedelta
 from dateutil.relativedelta import relativedelta
 
-from dm.data import TwelveDataFallbackWarning, get_price, get_treasury_rate
+from dm.data import (
+    TwelveDataFallbackWarning,
+    get_price_history,
+    get_treasury_rate,
+    select_price_on_or_before,
+)
 from dm.returns import (
     calculate_simple_return,
     convert_treasury_rate,
@@ -13,9 +18,17 @@ from dm.returns import (
 )
 from dm.compare import determine_winner, InstrumentReturns
 
+# Padding before the earliest target date so the "most recent on or before"
+# lookup always has a trading day available across weekends/holidays.
+_HISTORY_PADDING_DAYS = 10
+
 
 def get_returns_for_symbol(symbol: str, today: date) -> tuple[float, float, float]:
     """Calculate returns for a symbol over 1, 3, and 6 month periods.
+
+    Fetches the 6-month price history once (one API call) and picks each
+    target date out of it locally. Avoids hitting TwelveData's per-minute
+    credit limit with four separate lookups.
 
     Args:
         symbol: Stock ticker symbol
@@ -24,15 +37,17 @@ def get_returns_for_symbol(symbol: str, today: date) -> tuple[float, float, floa
     Returns:
         Tuple of (1-month return, 3-month return, 6-month return)
     """
-    current_price = get_price(symbol, today)
-
     date_1m = today - relativedelta(months=1)
     date_3m = today - relativedelta(months=3)
     date_6m = today - relativedelta(months=6)
 
-    price_1m = get_price(symbol, date_1m)
-    price_3m = get_price(symbol, date_3m)
-    price_6m = get_price(symbol, date_6m)
+    history_start = date_6m - timedelta(days=_HISTORY_PADDING_DAYS)
+    history = get_price_history(symbol, history_start, today)
+
+    current_price = select_price_on_or_before(history, today, symbol)
+    price_1m = select_price_on_or_before(history, date_1m, symbol)
+    price_3m = select_price_on_or_before(history, date_3m, symbol)
+    price_6m = select_price_on_or_before(history, date_6m, symbol)
 
     return_1m = calculate_simple_return(price_1m, current_price)
     return_3m = calculate_simple_return(price_3m, current_price)
