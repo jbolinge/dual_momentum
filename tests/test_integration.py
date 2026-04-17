@@ -4,16 +4,41 @@ Run with: uv run pytest -m integration
 Skip with: uv run pytest -m "not integration"
 """
 
+import os
 import subprocess
 from datetime import date
 
 import pytest
+from dotenv import load_dotenv
 
-from dm.data import get_price, get_treasury_rate
+from dm.data import _get_price_twelvedata, get_price, get_treasury_rate
 from dm.cli import get_returns_for_symbol, get_treasury_returns
 
 
 pytestmark = pytest.mark.integration
+
+
+class TestTwelveDataIntegration:
+    """Integration tests for the TwelveData fetcher (skipped if no API key)."""
+
+    def setup_method(self):
+        load_dotenv()
+        if not os.getenv("TWELVEDATA_API_KEY"):
+            pytest.skip("TWELVEDATA_API_KEY not set")
+
+    def test_get_voo_price_via_twelvedata(self):
+        today = date.today()
+        price = _get_price_twelvedata("VOO", today)
+
+        assert isinstance(price, float)
+        assert 100 < price < 1000
+
+    def test_get_vxus_price_via_twelvedata(self):
+        today = date.today()
+        price = _get_price_twelvedata("VXUS", today)
+
+        assert isinstance(price, float)
+        assert 20 < price < 200
 
 
 class TestYFinanceIntegration:
