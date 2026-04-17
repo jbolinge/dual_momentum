@@ -8,6 +8,7 @@ import pytest
 import requests
 
 from dm.data import (
+    _get_price_history_twelvedata,
     _get_price_twelvedata,
     _get_price_yfinance,
     get_price,
@@ -328,3 +329,111 @@ class TestGetPriceFallback:
         ]
         assert len(fallback_warnings) == 1
         assert mock_yf.call_count == 5
+
+
+class TestGetPriceHistoryTwelveData:
+    """Tests for `_get_price_history_twelvedata` — the wide-window TwelveData fetcher."""
+
+    @patch("dm.data.requests.get")
+    @patch("dm.data.os.getenv")
+    def test_returns_list_of_bars(self, mock_getenv, mock_get):
+        mock_getenv.return_value = "fake_key"
+        mock_get.return_value = _td_response(
+            values=[
+                {"datetime": "2024-01-10", "close": "102.00"},
+                {"datetime": "2024-01-09", "close": "101.00"},
+                {"datetime": "2024-01-08", "close": "100.00"},
+            ],
+        )
+
+        bars = _get_price_history_twelvedata(
+            "VOO", date(2024, 1, 1), date(2024, 1, 10)
+        )
+
+        assert sorted(bars) == [
+            (date(2024, 1, 8), 100.0),
+            (date(2024, 1, 9), 101.0),
+            (date(2024, 1, 10), 102.0),
+        ]
+
+    @patch("dm.data.requests.get")
+    @patch("dm.data.os.getenv")
+    def test_sends_start_and_end_date_params(self, mock_getenv, mock_get):
+        mock_getenv.return_value = "fake_key"
+        mock_get.return_value = _td_response(
+            values=[{"datetime": "2024-06-10", "close": "500.00"}],
+        )
+
+        _get_price_history_twelvedata("VOO", date(2024, 1, 10), date(2024, 6, 10))
+
+        args, kwargs = mock_get.call_args
+        assert args[0] == "https://api.twelvedata.com/time_series"
+        params = kwargs["params"]
+        assert params["symbol"] == "VOO"
+        assert params["interval"] == "1day"
+        assert params["apikey"] == "fake_key"
+        assert params["start_date"] == "2024-01-10"
+        assert params["end_date"] == "2024-06-10"
+
+    @patch("dm.data.requests.get")
+    @patch("dm.data.os.getenv")
+    def test_parses_iso_datetime_with_time_component(self, mock_getenv, mock_get):
+        mock_getenv.return_value = "fake_key"
+        mock_get.return_value = _td_response(
+            values=[{"datetime": "2024-01-10T00:00:00Z", "close": "99.50"}],
+        )
+
+        bars = _get_price_history_twelvedata(
+            "VOO", date(2024, 1, 1), date(2024, 1, 10)
+        )
+
+        assert bars == [(date(2024, 1, 10), 99.5)]
+
+    @patch("dm.data.requests.get")
+    @patch("dm.data.os.getenv")
+    def test_raises_when_api_key_missing(self, mock_getenv, mock_get):
+        mock_getenv.return_value = None
+
+        with pytest.raises(ValueError, match="TWELVEDATA_API_KEY"):
+            _get_price_history_twelvedata(
+                "VOO", date(2024, 1, 1), date(2024, 1, 10)
+            )
+
+        mock_get.assert_not_called()
+
+    @patch("dm.data.requests.get")
+    @patch("dm.data.os.getenv")
+    def test_raises_on_empty_values(self, mock_getenv, mock_get):
+        mock_getenv.return_value = "fake_key"
+        mock_get.return_value = _td_response(values=[])
+
+        with pytest.raises(ValueError, match="No price data"):
+            _get_price_history_twelvedata(
+                "VOO", date(2024, 1, 1), date(2024, 1, 10)
+            )
+
+    @patch("dm.data.requests.get")
+    @patch("dm.data.os.getenv")
+    def test_raises_on_api_error_body(self, mock_getenv, mock_get):
+        mock_getenv.return_value = "fake_key"
+        mock_get.return_value = _td_response(
+            body={"code": 429, "message": "Rate limit", "status": "error"},
+        )
+
+        with pytest.raises(RuntimeError, match="Rate limit"):
+            _get_price_history_twelvedata(
+                "VOO", date(2024, 1, 1), date(2024, 1, 10)
+            )
+
+    @patch("dm.data.requests.get")
+    @patch("dm.data.os.getenv")
+    def test_raises_on_http_error(self, mock_getenv, mock_get):
+        mock_getenv.return_value = "fake_key"
+        resp = Mock(status_code=500)
+        resp.raise_for_status.side_effect = requests.HTTPError("500 Server Error")
+        mock_get.return_value = resp
+
+        with pytest.raises(requests.HTTPError):
+            _get_price_history_twelvedata(
+                "VOO", date(2024, 1, 1), date(2024, 1, 10)
+            )
