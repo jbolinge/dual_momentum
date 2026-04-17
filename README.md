@@ -68,6 +68,8 @@ TWELVEDATA_API_KEY=your_api_key_here
 - **FRED** — free key from the [Federal Reserve Bank of St. Louis](https://fred.stlouisfed.org/docs/api/api_key.html). Used for the 1-month treasury rate.
 - **Twelve Data** — free key from [twelvedata.com](https://twelvedata.com/). Used as the primary source for ETF prices. If the key is missing or the API is unreachable, the tool automatically falls back to yfinance and prints a warning to stderr.
 
+The tool fetches each ticker's full 6-month history in a single request and resolves the 1/3/6-month lookbacks locally, so a run consumes **2 Twelve Data credits** (one per ticker) — comfortably below the free tier's 8-credits-per-minute limit.
+
 ## Development
 
 ```bash

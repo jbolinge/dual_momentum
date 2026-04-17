@@ -348,9 +348,7 @@ class TestGetPriceHistoryTwelveData:
             ],
         )
 
-        bars = _get_price_history_twelvedata(
-            "VOO", date(2024, 1, 1), date(2024, 1, 10)
-        )
+        bars = _get_price_history_twelvedata("VOO", date(2024, 1, 1), date(2024, 1, 10))
 
         assert sorted(bars) == [
             (date(2024, 1, 8), 100.0),
@@ -385,9 +383,7 @@ class TestGetPriceHistoryTwelveData:
             values=[{"datetime": "2024-01-10T00:00:00Z", "close": "99.50"}],
         )
 
-        bars = _get_price_history_twelvedata(
-            "VOO", date(2024, 1, 1), date(2024, 1, 10)
-        )
+        bars = _get_price_history_twelvedata("VOO", date(2024, 1, 1), date(2024, 1, 10))
 
         assert bars == [(date(2024, 1, 10), 99.5)]
 
@@ -397,9 +393,7 @@ class TestGetPriceHistoryTwelveData:
         mock_getenv.return_value = None
 
         with pytest.raises(ValueError, match="TWELVEDATA_API_KEY"):
-            _get_price_history_twelvedata(
-                "VOO", date(2024, 1, 1), date(2024, 1, 10)
-            )
+            _get_price_history_twelvedata("VOO", date(2024, 1, 1), date(2024, 1, 10))
 
         mock_get.assert_not_called()
 
@@ -410,9 +404,7 @@ class TestGetPriceHistoryTwelveData:
         mock_get.return_value = _td_response(values=[])
 
         with pytest.raises(ValueError, match="No price data"):
-            _get_price_history_twelvedata(
-                "VOO", date(2024, 1, 1), date(2024, 1, 10)
-            )
+            _get_price_history_twelvedata("VOO", date(2024, 1, 1), date(2024, 1, 10))
 
     @patch("dm.data.requests.get")
     @patch("dm.data.os.getenv")
@@ -423,9 +415,7 @@ class TestGetPriceHistoryTwelveData:
         )
 
         with pytest.raises(RuntimeError, match="Rate limit"):
-            _get_price_history_twelvedata(
-                "VOO", date(2024, 1, 1), date(2024, 1, 10)
-            )
+            _get_price_history_twelvedata("VOO", date(2024, 1, 1), date(2024, 1, 10))
 
     @patch("dm.data.requests.get")
     @patch("dm.data.os.getenv")
@@ -436,9 +426,7 @@ class TestGetPriceHistoryTwelveData:
         mock_get.return_value = resp
 
         with pytest.raises(requests.HTTPError):
-            _get_price_history_twelvedata(
-                "VOO", date(2024, 1, 1), date(2024, 1, 10)
-            )
+            _get_price_history_twelvedata("VOO", date(2024, 1, 1), date(2024, 1, 10))
 
 
 class TestGetPriceHistoryYFinance:
@@ -453,9 +441,7 @@ class TestGetPriceHistoryYFinance:
             index=pd.to_datetime(["2024-01-08", "2024-01-09", "2024-01-10"]),
         )
 
-        bars = _get_price_history_yfinance(
-            "VOO", date(2024, 1, 1), date(2024, 1, 10)
-        )
+        bars = _get_price_history_yfinance("VOO", date(2024, 1, 1), date(2024, 1, 10))
 
         assert bars == [
             (date(2024, 1, 8), 100.0),
@@ -473,9 +459,7 @@ class TestGetPriceHistoryYFinance:
             {"Close": [100.0]}, index=pd.to_datetime(["2024-01-10"])
         )
 
-        _get_price_history_yfinance(
-            "VOO", date(2024, 1, 1), date(2024, 1, 10)
-        )
+        _get_price_history_yfinance("VOO", date(2024, 1, 1), date(2024, 1, 10))
 
         args, kwargs = mock_ticker.history.call_args
         assert kwargs["start"] == date(2024, 1, 1)
@@ -490,9 +474,7 @@ class TestGetPriceHistoryYFinance:
         )
 
         with pytest.raises(ValueError, match="No price data"):
-            _get_price_history_yfinance(
-                "VOO", date(2024, 1, 1), date(2024, 1, 10)
-            )
+            _get_price_history_yfinance("VOO", date(2024, 1, 1), date(2024, 1, 10))
 
 
 class TestGetPriceHistoryFallback:

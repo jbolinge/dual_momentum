@@ -84,10 +84,7 @@ def _get_price_history_twelvedata(
     if not values:
         raise ValueError(f"No price data found for {symbol}")
 
-    return [
-        (date.fromisoformat(v["datetime"][:10]), float(v["close"]))
-        for v in values
-    ]
+    return [(date.fromisoformat(v["datetime"][:10]), float(v["close"])) for v in values]
 
 
 def _get_price_twelvedata(symbol: str, target_date: date) -> float:
