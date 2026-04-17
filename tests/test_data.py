@@ -5,8 +5,9 @@ from unittest.mock import Mock, patch
 
 import pandas as pd
 import pytest
+import requests
 
-from dm.data import get_price, get_treasury_rate
+from dm.data import _get_price_twelvedata, get_price, get_treasury_rate
 
 
 class TestGetPrice:
@@ -112,3 +113,136 @@ class TestGetTreasuryRate:
         result = get_treasury_rate(date(2024, 1, 15))
 
         assert result == pytest.approx(0.046)
+
+
+def _td_response(values: list[dict] | None = None, body: dict | None = None) -> Mock:
+    """Build a mock `requests.Response` for TwelveData."""
+    resp = Mock(status_code=200)
+    if body is not None:
+        resp.json.return_value = body
+    else:
+        resp.json.return_value = {"meta": {"symbol": "VOO"}, "values": values or []}
+    resp.raise_for_status = Mock()
+    return resp
+
+
+class TestGetPriceTwelveData:
+    """Tests for `_get_price_twelvedata` — the TwelveData REST fetcher."""
+
+    @patch("dm.data.requests.get")
+    @patch("dm.data.os.getenv")
+    def test_returns_close_for_target_date(self, mock_getenv, mock_get):
+        mock_getenv.return_value = "fake_key"
+        mock_get.return_value = _td_response(
+            values=[
+                {"datetime": "2024-01-10", "close": "102.00"},
+                {"datetime": "2024-01-09", "close": "101.00"},
+                {"datetime": "2024-01-08", "close": "100.00"},
+            ],
+        )
+
+        result = _get_price_twelvedata("VOO", date(2024, 1, 10))
+
+        assert result == 102.0
+
+    @patch("dm.data.requests.get")
+    @patch("dm.data.os.getenv")
+    def test_uses_most_recent_on_or_before(self, mock_getenv, mock_get):
+        mock_getenv.return_value = "fake_key"
+        # Data ends Friday; request Sunday.
+        mock_get.return_value = _td_response(
+            values=[
+                {"datetime": "2024-01-12", "close": "101.00"},
+                {"datetime": "2024-01-11", "close": "100.00"},
+            ],
+        )
+
+        result = _get_price_twelvedata("VOO", date(2024, 1, 14))
+
+        assert result == 101.0
+
+    @patch("dm.data.requests.get")
+    @patch("dm.data.os.getenv")
+    def test_parses_iso_datetime_with_time_component(self, mock_getenv, mock_get):
+        mock_getenv.return_value = "fake_key"
+        mock_get.return_value = _td_response(
+            values=[{"datetime": "2024-01-10T00:00:00Z", "close": "99.50"}],
+        )
+
+        result = _get_price_twelvedata("VOO", date(2024, 1, 10))
+
+        assert result == 99.5
+
+    @patch("dm.data.requests.get")
+    @patch("dm.data.os.getenv")
+    def test_raises_when_api_key_missing(self, mock_getenv, mock_get):
+        mock_getenv.return_value = None
+
+        with pytest.raises(ValueError, match="TWELVEDATA_API_KEY"):
+            _get_price_twelvedata("VOO", date(2024, 1, 10))
+
+        mock_get.assert_not_called()
+
+    @patch("dm.data.requests.get")
+    @patch("dm.data.os.getenv")
+    def test_raises_on_empty_values(self, mock_getenv, mock_get):
+        mock_getenv.return_value = "fake_key"
+        mock_get.return_value = _td_response(values=[])
+
+        with pytest.raises(ValueError, match="No price data"):
+            _get_price_twelvedata("VOO", date(2024, 1, 10))
+
+    @patch("dm.data.requests.get")
+    @patch("dm.data.os.getenv")
+    def test_raises_when_no_value_on_or_before_target(self, mock_getenv, mock_get):
+        mock_getenv.return_value = "fake_key"
+        # All values are AFTER the target date
+        mock_get.return_value = _td_response(
+            values=[{"datetime": "2024-01-15", "close": "103.00"}],
+        )
+
+        with pytest.raises(ValueError, match="on or before"):
+            _get_price_twelvedata("VOO", date(2024, 1, 10))
+
+    @patch("dm.data.requests.get")
+    @patch("dm.data.os.getenv")
+    def test_raises_on_api_error_body(self, mock_getenv, mock_get):
+        mock_getenv.return_value = "fake_key"
+        mock_get.return_value = _td_response(
+            body={"code": 429, "message": "Rate limit", "status": "error"},
+        )
+
+        with pytest.raises(RuntimeError, match="Rate limit"):
+            _get_price_twelvedata("VOO", date(2024, 1, 10))
+
+    @patch("dm.data.requests.get")
+    @patch("dm.data.os.getenv")
+    def test_raises_on_http_error(self, mock_getenv, mock_get):
+        mock_getenv.return_value = "fake_key"
+        resp = Mock(status_code=500)
+        resp.raise_for_status.side_effect = requests.HTTPError("500 Server Error")
+        mock_get.return_value = resp
+
+        with pytest.raises(requests.HTTPError):
+            _get_price_twelvedata("VOO", date(2024, 1, 10))
+
+    @patch("dm.data.requests.get")
+    @patch("dm.data.os.getenv")
+    def test_sends_expected_request_params(self, mock_getenv, mock_get):
+        mock_getenv.return_value = "fake_key"
+        mock_get.return_value = _td_response(
+            values=[{"datetime": "2024-01-10", "close": "100.00"}],
+        )
+
+        _get_price_twelvedata("VOO", date(2024, 1, 10))
+
+        args, kwargs = mock_get.call_args
+        assert args[0] == "https://api.twelvedata.com/time_series"
+        params = kwargs["params"]
+        assert params["symbol"] == "VOO"
+        assert params["interval"] == "1day"
+        assert params["apikey"] == "fake_key"
+        assert params["end_date"] == "2024-01-10"
+        # start_date should be ~10 days earlier to cover weekends/holidays
+        expected_start = (date(2024, 1, 10) - timedelta(days=10)).isoformat()
+        assert params["start_date"] == expected_start
