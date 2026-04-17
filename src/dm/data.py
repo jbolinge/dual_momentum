@@ -46,11 +46,13 @@ def select_price_on_or_before(
     return valid[-1][1]
 
 
-def _get_price_twelvedata(symbol: str, target_date: date) -> float:
-    """Fetch closing price from TwelveData for `symbol` on or before `target_date`.
+def _get_price_history_twelvedata(
+    symbol: str, start_date: date, end_date: date
+) -> list[tuple[date, float]]:
+    """Fetch daily close bars from TwelveData for `symbol` in [start_date, end_date].
 
     Raises:
-        ValueError: if TWELVEDATA_API_KEY is unset or no usable data is returned.
+        ValueError: if TWELVEDATA_API_KEY is unset or the response has no bars.
         RuntimeError: if the API returns a JSON error body.
         requests.RequestException: on network or HTTP errors.
     """
@@ -59,16 +61,13 @@ def _get_price_twelvedata(symbol: str, target_date: date) -> float:
     if not api_key:
         raise ValueError("TWELVEDATA_API_KEY not found in environment")
 
-    start_date = (target_date - timedelta(days=_PRICE_WINDOW_DAYS)).isoformat()
-    end_date = target_date.isoformat()
-
     response = requests.get(
         _TWELVEDATA_URL,
         params={
             "symbol": symbol,
             "interval": "1day",
-            "start_date": start_date,
-            "end_date": end_date,
+            "start_date": start_date.isoformat(),
+            "end_date": end_date.isoformat(),
             "apikey": api_key,
         },
         timeout=_REQUEST_TIMEOUT_SECONDS,
@@ -81,10 +80,20 @@ def _get_price_twelvedata(symbol: str, target_date: date) -> float:
             f"TwelveData API error: {payload.get('message', 'unknown error')}"
         )
 
-    bars = [
+    values = payload.get("values", [])
+    if not values:
+        raise ValueError(f"No price data found for {symbol}")
+
+    return [
         (date.fromisoformat(v["datetime"][:10]), float(v["close"]))
-        for v in payload.get("values", [])
+        for v in values
     ]
+
+
+def _get_price_twelvedata(symbol: str, target_date: date) -> float:
+    """Fetch closing price from TwelveData for `symbol` on or before `target_date`."""
+    start_date = target_date - timedelta(days=_PRICE_WINDOW_DAYS)
+    bars = _get_price_history_twelvedata(symbol, start_date, target_date)
     return select_price_on_or_before(bars, target_date, symbol)
 
 
