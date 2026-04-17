@@ -97,22 +97,30 @@ def _get_price_twelvedata(symbol: str, target_date: date) -> float:
     return select_price_on_or_before(bars, target_date, symbol)
 
 
-def _get_price_yfinance(symbol: str, target_date: date) -> float:
-    """Fetch closing price from yfinance for `symbol` on or before `target_date`."""
-    ticker = yf.Ticker(symbol)
+def _get_price_history_yfinance(
+    symbol: str, start_date: date, end_date: date
+) -> list[tuple[date, float]]:
+    """Fetch daily close bars from yfinance for `symbol` in [start_date, end_date].
 
-    # yfinance `end` is exclusive; add a day so target_date is included.
-    start_date = target_date - timedelta(days=_PRICE_WINDOW_DAYS)
-    end_date = target_date + timedelta(days=1)
-    history = ticker.history(start=start_date, end=end_date)
+    The end_date is inclusive from the caller's perspective — yfinance's
+    `history()` treats `end` as exclusive, so we add one day internally.
+    """
+    ticker = yf.Ticker(symbol)
+    history = ticker.history(start=start_date, end=end_date + timedelta(days=1))
 
     if history.empty:
         raise ValueError(f"No price data found for {symbol}")
 
     history.index = history.index.tz_localize(None)
-    bars = [
+    return [
         (ts.date(), float(close)) for ts, close in zip(history.index, history["Close"])
     ]
+
+
+def _get_price_yfinance(symbol: str, target_date: date) -> float:
+    """Fetch closing price from yfinance for `symbol` on or before `target_date`."""
+    start_date = target_date - timedelta(days=_PRICE_WINDOW_DAYS)
+    bars = _get_price_history_yfinance(symbol, start_date, target_date)
     return select_price_on_or_before(bars, target_date, symbol)
 
 
