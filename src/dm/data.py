@@ -28,10 +28,15 @@ def _reset_fallback_warning() -> None:
     _fallback_warned = False
 
 
-def _select_latest_on_or_before(
+def select_price_on_or_before(
     bars: list[tuple[date, float]], target_date: date, symbol: str
 ) -> float:
-    """Return the close price for the most recent bar dated on or before target."""
+    """Return the close price for the most recent bar dated on or before target.
+
+    Use this to pick a single price out of a wide history window, e.g. the
+    result of `get_price_history`. The `symbol` argument is only used to
+    build the error message when no usable bar exists.
+    """
     if not bars:
         raise ValueError(f"No price data found for {symbol}")
     valid = [(d, p) for d, p in bars if d <= target_date]
@@ -80,7 +85,7 @@ def _get_price_twelvedata(symbol: str, target_date: date) -> float:
         (date.fromisoformat(v["datetime"][:10]), float(v["close"]))
         for v in payload.get("values", [])
     ]
-    return _select_latest_on_or_before(bars, target_date, symbol)
+    return select_price_on_or_before(bars, target_date, symbol)
 
 
 def _get_price_yfinance(symbol: str, target_date: date) -> float:
@@ -99,7 +104,7 @@ def _get_price_yfinance(symbol: str, target_date: date) -> float:
     bars = [
         (ts.date(), float(close)) for ts, close in zip(history.index, history["Close"])
     ]
-    return _select_latest_on_or_before(bars, target_date, symbol)
+    return select_price_on_or_before(bars, target_date, symbol)
 
 
 def get_price(symbol: str, target_date: date) -> float:
