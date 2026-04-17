@@ -14,6 +14,20 @@ _PRICE_WINDOW_DAYS = 10
 _REQUEST_TIMEOUT_SECONDS = 10
 
 
+class TwelveDataFallbackWarning(UserWarning):
+    """Emitted when a price lookup falls back from TwelveData to yfinance."""
+
+
+# Module-level latch: once a fallback warning has fired this process, stay silent.
+_fallback_warned = False
+
+
+def _reset_fallback_warning() -> None:
+    """Reset the fallback-warning latch (for tests)."""
+    global _fallback_warned
+    _fallback_warned = False
+
+
 def _select_latest_on_or_before(
     bars: list[tuple[date, float]], target_date: date, symbol: str
 ) -> float:
@@ -100,14 +114,17 @@ def get_price(symbol: str, target_date: date) -> float:
     Returns:
         Closing price. If no data for exact date, returns most recent prior.
     """
+    global _fallback_warned
     try:
         return _get_price_twelvedata(symbol, target_date)
     except Exception as twelvedata_error:
-        warnings.warn(
-            f"TwelveData unavailable ({twelvedata_error}); using yfinance fallback",
-            UserWarning,
-            stacklevel=2,
-        )
+        if not _fallback_warned:
+            warnings.warn(
+                f"TwelveData unavailable ({twelvedata_error}); using yfinance fallback",
+                TwelveDataFallbackWarning,
+                stacklevel=2,
+            )
+            _fallback_warned = True
         return _get_price_yfinance(symbol, target_date)
 
 

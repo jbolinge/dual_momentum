@@ -1,10 +1,11 @@
 """CLI entry point."""
 
+import sys
 import warnings
 from datetime import date
 from dateutil.relativedelta import relativedelta
 
-from dm.data import get_price, get_treasury_rate
+from dm.data import TwelveDataFallbackWarning, get_price, get_treasury_rate
 from dm.returns import (
     calculate_simple_return,
     convert_treasury_rate,
@@ -98,8 +99,7 @@ def format_output(
     return "\n".join(lines)
 
 
-def main():
-    """Main entry point for the dm CLI."""
+def _configure_warnings() -> None:
     # Suppress yfinance's internal pandas deprecation warnings
     # See: https://github.com/ranaroussi/yfinance/issues/1837
     warnings.filterwarnings(
@@ -107,6 +107,23 @@ def main():
         message=".*utcnow.*deprecated.*",
         module="yfinance.*",
     )
+
+    # Render TwelveData fallback warnings cleanly to stderr (no file/lineno noise).
+    # The warning itself is latched in dm.data and fires at most once per run.
+    default_showwarning = warnings.showwarning
+
+    def showwarning(message, category, filename, lineno, file=None, line=None):
+        if issubclass(category, TwelveDataFallbackWarning):
+            print(f"Warning: {message}", file=sys.stderr)
+            return
+        default_showwarning(message, category, filename, lineno, file, line)
+
+    warnings.showwarning = showwarning
+
+
+def main():
+    """Main entry point for the dm CLI."""
+    _configure_warnings()
 
     today = date.today()
 

@@ -313,3 +313,18 @@ class TestGetPriceFallback:
         with pytest.warns(UserWarning, match="yfinance fallback"):
             with pytest.raises(ValueError, match="yfinance empty"):
                 get_price("VOO", date(2024, 1, 10))
+
+    @patch("dm.data._get_price_yfinance")
+    @patch("dm.data._get_price_twelvedata")
+    def test_warning_fires_only_once_across_calls(self, mock_td, mock_yf, recwarn):
+        mock_td.side_effect = RuntimeError("TD down")
+        mock_yf.return_value = 10.0
+
+        for _ in range(5):
+            get_price("VOO", date(2024, 1, 10))
+
+        fallback_warnings = [
+            w for w in recwarn.list if issubclass(w.category, UserWarning)
+        ]
+        assert len(fallback_warnings) == 1
+        assert mock_yf.call_count == 5
