@@ -7,11 +7,16 @@ import pandas as pd
 import pytest
 import requests
 
-from dm.data import _get_price_twelvedata, get_price, get_treasury_rate
+from dm.data import (
+    _get_price_twelvedata,
+    _get_price_yfinance,
+    get_price,
+    get_treasury_rate,
+)
 
 
-class TestGetPrice:
-    """Tests for fetching security prices."""
+class TestGetPriceYFinance:
+    """Tests for `_get_price_yfinance` — the yfinance fallback fetcher."""
 
     @patch("dm.data.yf.Ticker")
     def test_get_price_for_date(self, mock_ticker_class):
@@ -26,7 +31,7 @@ class TestGetPrice:
         )
         mock_ticker.history.return_value = mock_history
 
-        result = get_price("VOO", date(2024, 1, 10))
+        result = _get_price_yfinance("VOO", date(2024, 1, 10))
 
         assert result == 102.0
         mock_ticker_class.assert_called_once_with("VOO")
@@ -45,7 +50,7 @@ class TestGetPrice:
         mock_ticker.history.return_value = mock_history
 
         # Request Saturday's price - should get Friday's
-        result = get_price("VOO", date(2024, 1, 13))
+        result = _get_price_yfinance("VOO", date(2024, 1, 13))
 
         assert result == 101.0
 
@@ -61,7 +66,7 @@ class TestGetPrice:
         )
         mock_ticker.history.return_value = mock_history
 
-        result = get_price("VXUS", date(2024, 1, 10))
+        result = _get_price_yfinance("VXUS", date(2024, 1, 10))
 
         assert result == 55.0
         mock_ticker_class.assert_called_once_with("VXUS")
@@ -246,3 +251,65 @@ class TestGetPriceTwelveData:
         # start_date should be ~10 days earlier to cover weekends/holidays
         expected_start = (date(2024, 1, 10) - timedelta(days=10)).isoformat()
         assert params["start_date"] == expected_start
+
+
+class TestGetPriceFallback:
+    """Tests for the `get_price` orchestrator: TwelveData-first with yfinance fallback."""
+
+    @patch("dm.data._get_price_yfinance")
+    @patch("dm.data._get_price_twelvedata")
+    def test_uses_twelvedata_when_successful(self, mock_td, mock_yf, recwarn):
+        mock_td.return_value = 102.0
+
+        result = get_price("VOO", date(2024, 1, 10))
+
+        assert result == 102.0
+        mock_td.assert_called_once_with("VOO", date(2024, 1, 10))
+        mock_yf.assert_not_called()
+        # No warnings on the happy path
+        assert [w for w in recwarn.list if issubclass(w.category, UserWarning)] == []
+
+    @patch("dm.data._get_price_yfinance")
+    @patch("dm.data._get_price_twelvedata")
+    def test_falls_back_to_yfinance_on_twelvedata_error(self, mock_td, mock_yf):
+        mock_td.side_effect = RuntimeError("TwelveData API error: Rate limit")
+        mock_yf.return_value = 99.9
+
+        with pytest.warns(UserWarning, match="yfinance fallback"):
+            result = get_price("VOO", date(2024, 1, 10))
+
+        assert result == 99.9
+        mock_yf.assert_called_once_with("VOO", date(2024, 1, 10))
+
+    @patch("dm.data._get_price_yfinance")
+    @patch("dm.data._get_price_twelvedata")
+    def test_falls_back_when_api_key_missing(self, mock_td, mock_yf):
+        mock_td.side_effect = ValueError("TWELVEDATA_API_KEY not found in environment")
+        mock_yf.return_value = 50.0
+
+        with pytest.warns(UserWarning, match="yfinance fallback"):
+            result = get_price("VOO", date(2024, 1, 10))
+
+        assert result == 50.0
+        mock_yf.assert_called_once_with("VOO", date(2024, 1, 10))
+
+    @patch("dm.data._get_price_yfinance")
+    @patch("dm.data._get_price_twelvedata")
+    def test_falls_back_on_network_error(self, mock_td, mock_yf):
+        mock_td.side_effect = requests.ConnectionError("network unreachable")
+        mock_yf.return_value = 77.0
+
+        with pytest.warns(UserWarning, match="yfinance fallback"):
+            result = get_price("VOO", date(2024, 1, 10))
+
+        assert result == 77.0
+
+    @patch("dm.data._get_price_yfinance")
+    @patch("dm.data._get_price_twelvedata")
+    def test_raises_when_both_sources_fail(self, mock_td, mock_yf):
+        mock_td.side_effect = RuntimeError("TD down")
+        mock_yf.side_effect = ValueError("yfinance empty")
+
+        with pytest.warns(UserWarning, match="yfinance fallback"):
+            with pytest.raises(ValueError, match="yfinance empty"):
+                get_price("VOO", date(2024, 1, 10))
