@@ -9,6 +9,7 @@ import requests
 
 from dm.data import (
     _get_price_history_twelvedata,
+    _get_price_history_yfinance,
     _get_price_twelvedata,
     _get_price_yfinance,
     get_price,
@@ -435,5 +436,59 @@ class TestGetPriceHistoryTwelveData:
 
         with pytest.raises(requests.HTTPError):
             _get_price_history_twelvedata(
+                "VOO", date(2024, 1, 1), date(2024, 1, 10)
+            )
+
+
+class TestGetPriceHistoryYFinance:
+    """Tests for `_get_price_history_yfinance` — the wide-window yfinance fetcher."""
+
+    @patch("dm.data.yf.Ticker")
+    def test_returns_list_of_bars(self, mock_ticker_class):
+        mock_ticker = Mock()
+        mock_ticker_class.return_value = mock_ticker
+        mock_ticker.history.return_value = pd.DataFrame(
+            {"Close": [100.0, 101.0, 102.0]},
+            index=pd.to_datetime(["2024-01-08", "2024-01-09", "2024-01-10"]),
+        )
+
+        bars = _get_price_history_yfinance(
+            "VOO", date(2024, 1, 1), date(2024, 1, 10)
+        )
+
+        assert bars == [
+            (date(2024, 1, 8), 100.0),
+            (date(2024, 1, 9), 101.0),
+            (date(2024, 1, 10), 102.0),
+        ]
+        mock_ticker_class.assert_called_once_with("VOO")
+
+    @patch("dm.data.yf.Ticker")
+    def test_passes_inclusive_end_date_to_yfinance(self, mock_ticker_class):
+        """yfinance.history treats `end` as exclusive — the fetcher must add a day."""
+        mock_ticker = Mock()
+        mock_ticker_class.return_value = mock_ticker
+        mock_ticker.history.return_value = pd.DataFrame(
+            {"Close": [100.0]}, index=pd.to_datetime(["2024-01-10"])
+        )
+
+        _get_price_history_yfinance(
+            "VOO", date(2024, 1, 1), date(2024, 1, 10)
+        )
+
+        args, kwargs = mock_ticker.history.call_args
+        assert kwargs["start"] == date(2024, 1, 1)
+        assert kwargs["end"] == date(2024, 1, 11)  # exclusive, so +1 day
+
+    @patch("dm.data.yf.Ticker")
+    def test_raises_on_empty_history(self, mock_ticker_class):
+        mock_ticker = Mock()
+        mock_ticker_class.return_value = mock_ticker
+        mock_ticker.history.return_value = pd.DataFrame(
+            {"Close": []}, index=pd.to_datetime([])
+        )
+
+        with pytest.raises(ValueError, match="No price data"):
+            _get_price_history_yfinance(
                 "VOO", date(2024, 1, 1), date(2024, 1, 10)
             )
