@@ -22,9 +22,7 @@ def _select_latest_on_or_before(
         raise ValueError(f"No price data found for {symbol}")
     valid = [(d, p) for d, p in bars if d <= target_date]
     if not valid:
-        raise ValueError(
-            f"No price data found for {symbol} on or before {target_date}"
-        )
+        raise ValueError(f"No price data found for {symbol} on or before {target_date}")
     valid.sort(key=lambda x: x[0])
     return valid[-1][1]
 
@@ -85,8 +83,7 @@ def _get_price_yfinance(symbol: str, target_date: date) -> float:
 
     history.index = history.index.tz_localize(None)
     bars = [
-        (ts.date(), float(close))
-        for ts, close in zip(history.index, history["Close"])
+        (ts.date(), float(close)) for ts, close in zip(history.index, history["Close"])
     ]
     return _select_latest_on_or_before(bars, target_date, symbol)
 

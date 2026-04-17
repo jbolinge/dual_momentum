@@ -1,7 +1,5 @@
 """Tests for comparison logic."""
 
-import pytest
-
 from dm.compare import determine_winner, InstrumentReturns
 
 

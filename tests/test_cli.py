@@ -1,9 +1,7 @@
 """Tests for CLI output."""
 
-from io import StringIO
 from unittest.mock import patch
 
-import pytest
 
 from dm.cli import main, format_output
 from dm.compare import InstrumentReturns
@@ -85,6 +83,7 @@ class TestMain:
     @patch("dm.cli.get_treasury_rate")
     def test_main_produces_output(self, mock_treasury, mock_price, capsys):
         """Test that main produces expected output structure."""
+
         # Mock price data: start and end prices for 1, 3, 6 months
         # VOO: starts at 100, ends at 105 (5% return for simplicity)
         # VXUS: starts at 50, ends at 51.5 (3% return)

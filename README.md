@@ -58,13 +58,15 @@ Signal: VXUS
 
 ## Configuration
 
-Create a `.env` file with your FRED API key:
+Create a `.env` file with your API keys:
 
 ```
 FRED_API_KEY=your_api_key_here
+TWELVEDATA_API_KEY=your_api_key_here
 ```
 
-You can obtain a free API key from the [Federal Reserve Bank of St. Louis](https://fred.stlouisfed.org/docs/api/api_key.html).
+- **FRED** — free key from the [Federal Reserve Bank of St. Louis](https://fred.stlouisfed.org/docs/api/api_key.html). Used for the 1-month treasury rate.
+- **Twelve Data** — free key from [twelvedata.com](https://twelvedata.com/). Used as the primary source for ETF prices. If the key is missing or the API is unreachable, the tool automatically falls back to yfinance and prints a warning to stderr.
 
 ## Development
 

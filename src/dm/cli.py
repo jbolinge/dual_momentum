@@ -1,11 +1,15 @@
 """CLI entry point."""
 
 import warnings
-from datetime import date, timedelta
+from datetime import date
 from dateutil.relativedelta import relativedelta
 
 from dm.data import get_price, get_treasury_rate
-from dm.returns import calculate_simple_return, convert_treasury_rate, calculate_weighted_return
+from dm.returns import (
+    calculate_simple_return,
+    convert_treasury_rate,
+    calculate_weighted_return,
+)
 from dm.compare import determine_winner, InstrumentReturns
 
 

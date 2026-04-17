@@ -1,7 +1,11 @@
 """Tests for return calculations."""
 
 import pytest
-from dm.returns import calculate_simple_return, convert_treasury_rate, calculate_weighted_return
+from dm.returns import (
+    calculate_simple_return,
+    convert_treasury_rate,
+    calculate_weighted_return,
+)
 
 
 class TestSimpleReturn:
