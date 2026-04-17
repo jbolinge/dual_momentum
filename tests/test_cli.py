@@ -1,7 +1,7 @@
 """Tests for CLI output."""
 
+from datetime import date
 from unittest.mock import patch
-
 
 from dm.cli import main, format_output
 from dm.compare import InstrumentReturns
@@ -79,52 +79,52 @@ class TestFormatOutput:
 class TestMain:
     """Tests for main CLI function."""
 
-    @patch("dm.cli.get_price")
     @patch("dm.cli.get_treasury_rate")
-    def test_main_produces_output(self, mock_treasury, mock_price, capsys):
-        """Test that main produces expected output structure."""
+    @patch("dm.cli.select_price_on_or_before")
+    @patch("dm.cli.get_price_history")
+    def test_main_produces_output(
+        self, mock_history, mock_select, mock_treasury, capsys
+    ):
+        """Main composes the history fetch + per-date lookups + treasury call."""
+        mock_history.return_value = [(date(2024, 1, 1), 100.0)]
 
-        # Mock price data: start and end prices for 1, 3, 6 months
-        # VOO: starts at 100, ends at 105 (5% return for simplicity)
-        # VXUS: starts at 50, ends at 51.5 (3% return)
-        def price_side_effect(symbol, date):
-            if symbol == "VOO":
-                return 105.0  # Current price
-            else:
-                return 51.5  # Current VXUS price
+        # Return a sequence of prices so 1m/3m/6m returns are non-zero and
+        # differ between VOO and VXUS. 8 selects total (4 per symbol).
+        voo_prices = [105.0, 100.0, 97.0, 94.0]
+        vxus_prices = [51.5, 50.0, 49.0, 48.0]
 
-        mock_price.side_effect = price_side_effect
+        call_count = {"VOO": 0, "VXUS": 0}
 
-        # Treasury rate 5% annual
+        def select_side_effect(bars, target_date, symbol):
+            prices = voo_prices if symbol == "VOO" else vxus_prices
+            value = prices[call_count[symbol]]
+            call_count[symbol] += 1
+            return value
+
+        mock_select.side_effect = select_side_effect
         mock_treasury.return_value = 0.05
 
-        # Override to return consistent mock data
-        with patch("dm.cli.get_price") as mock_p:
-            # Return different prices based on how far back we go
-            call_count = {"VOO": 0, "VXUS": 0}
-
-            def dynamic_price(symbol, date):
-                call_count[symbol] += 1
-                if symbol == "VOO":
-                    # Current=105, 1m ago=100, 3m ago=97, 6m ago=94
-                    prices = [105.0, 100.0, 97.0, 94.0]
-                    return prices[min(call_count[symbol] - 1, 3)]
-                else:  # VXUS
-                    # Current=51.5, 1m ago=50, 3m ago=49, 6m ago=48
-                    prices = [51.5, 50.0, 49.0, 48.0]
-                    return prices[min(call_count[symbol] - 1, 3)]
-
-            mock_p.side_effect = dynamic_price
-
-            with patch("dm.cli.get_treasury_rate", return_value=0.05):
-                main()
+        main()
 
         captured = capsys.readouterr()
         output = captured.out
-
-        # Verify output contains expected sections
         assert "VOO" in output
         assert "VXUS" in output
         assert "Treasury" in output
-        assert "1-Month" in output or "1m" in output.lower()
+        assert "1-Month" in output
         assert "Signal" in output
+
+    @patch("dm.cli.get_treasury_rate", return_value=0.05)
+    @patch("dm.cli.select_price_on_or_before", return_value=100.0)
+    @patch("dm.cli.get_price_history")
+    def test_one_history_fetch_per_symbol(
+        self, mock_history, _mock_select, _mock_treasury, capsys
+    ):
+        """Regression: credits budget. Exactly one get_price_history call per symbol."""
+        mock_history.return_value = [(date(2024, 1, 1), 100.0)]
+
+        main()
+
+        assert mock_history.call_count == 2
+        called_symbols = sorted(call.args[0] for call in mock_history.call_args_list)
+        assert called_symbols == ["VOO", "VXUS"]
