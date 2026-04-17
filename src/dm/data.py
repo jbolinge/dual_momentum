@@ -1,6 +1,7 @@
 """Data fetching from TwelveData (primary), yfinance (fallback), and FRED."""
 
 import os
+import warnings
 from datetime import date, timedelta
 
 import requests
@@ -93,6 +94,8 @@ def _get_price_yfinance(symbol: str, target_date: date) -> float:
 def get_price(symbol: str, target_date: date) -> float:
     """Fetch closing price for a security on or before target date.
 
+    Tries TwelveData first; on any failure, warns and falls back to yfinance.
+
     Args:
         symbol: Stock ticker symbol (e.g., 'VOO', 'VXUS')
         target_date: Date to fetch price for
@@ -100,7 +103,15 @@ def get_price(symbol: str, target_date: date) -> float:
     Returns:
         Closing price. If no data for exact date, returns most recent prior.
     """
-    return _get_price_yfinance(symbol, target_date)
+    try:
+        return _get_price_twelvedata(symbol, target_date)
+    except Exception as twelvedata_error:
+        warnings.warn(
+            f"TwelveData unavailable ({twelvedata_error}); using yfinance fallback",
+            UserWarning,
+            stacklevel=2,
+        )
+        return _get_price_yfinance(symbol, target_date)
 
 
 def get_treasury_rate(target_date: date) -> float:
