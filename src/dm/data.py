@@ -51,6 +51,10 @@ def _get_price_history_twelvedata(
 ) -> list[tuple[date, float]]:
     """Fetch daily close bars from TwelveData for `symbol` in [start_date, end_date].
 
+    Closes are dividend- and split-adjusted (`adjust=all`), i.e. total return.
+    TwelveData's default is `adjust=splits`, which drops dividends and
+    understates momentum lookbacks.
+
     Raises:
         ValueError: if TWELVEDATA_API_KEY is unset or the response has no bars.
         RuntimeError: if the API returns a JSON error body.
@@ -68,6 +72,7 @@ def _get_price_history_twelvedata(
             "interval": "1day",
             "start_date": start_date.isoformat(),
             "end_date": end_date.isoformat(),
+            "adjust": "all",
             "apikey": api_key,
         },
         timeout=_REQUEST_TIMEOUT_SECONDS,
@@ -99,11 +104,16 @@ def _get_price_history_yfinance(
 ) -> list[tuple[date, float]]:
     """Fetch daily close bars from yfinance for `symbol` in [start_date, end_date].
 
+    Closes are dividend- and split-adjusted (`auto_adjust=True`), i.e. total
+    return, matching the TwelveData `adjust=all` primary path.
+
     The end_date is inclusive from the caller's perspective — yfinance's
     `history()` treats `end` as exclusive, so we add one day internally.
     """
     ticker = yf.Ticker(symbol)
-    history = ticker.history(start=start_date, end=end_date + timedelta(days=1))
+    history = ticker.history(
+        start=start_date, end=end_date + timedelta(days=1), auto_adjust=True
+    )
 
     if history.empty:
         raise ValueError(f"No price data found for {symbol}")
@@ -203,3 +213,31 @@ def get_treasury_rate(target_date: date) -> float:
 
     # FRED returns rate as percentage (e.g., 5.0), convert to decimal
     return float(valid_rates.iloc[-1]) / 100
+
+
+def get_tbill_rates(start_date: date, end_date: date) -> list[tuple[date, float]]:
+    """Fetch the 3-month Treasury bill rate from FRED for [start_date, end_date].
+
+    Series DTB3 (3-Month Treasury Bill Secondary Market Rate, daily) is the
+    risk-free benchmark for absolute momentum. Holidays come back as NaN and
+    are dropped.
+
+    Returns:
+        Ascending (date, annualized rate as decimal) pairs, e.g. 0.0525 for 5.25%.
+    """
+    load_dotenv()
+    api_key = os.getenv("FRED_API_KEY")
+
+    if not api_key:
+        raise ValueError("FRED_API_KEY not found in environment")
+
+    fred = Fred(api_key=api_key)
+    series = fred.get_series("DTB3", start_date, end_date).dropna()
+
+    if series.empty:
+        raise ValueError(
+            f"No T-bill rate data found between {start_date} and {end_date}"
+        )
+
+    # FRED returns rates as percentages (e.g., 5.25), convert to decimals.
+    return [(timestamp.date(), float(rate) / 100) for timestamp, rate in series.items()]
