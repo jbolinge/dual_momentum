@@ -36,7 +36,12 @@ def build_signal(today: date) -> SignalResult:
     us_bars = get_price_history(US_TICKER, history_start, today)
     intl_bars = get_price_history(INTL_TICKER, history_start, today)
 
-    anchor_date, _ = anchor_month_end(us_bars, today)
+    # `compute_signal` anchors both funds on the latest month present in BOTH
+    # series, so the risk-free windows have to follow that shared anchor too.
+    us_anchor, _ = anchor_month_end(us_bars, today)
+    intl_anchor, _ = anchor_month_end(intl_bars, today)
+    anchor_date = min(us_anchor, intl_anchor)
+
     rates = get_tbill_rates(anchor_date - relativedelta(months=_HISTORY_MONTHS), today)
     rf_returns = accumulate_rf_returns(rates, anchor_date)
 
