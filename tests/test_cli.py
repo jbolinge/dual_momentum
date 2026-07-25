@@ -205,6 +205,39 @@ class TestBuildSignal:
         # Flat equities lose to a positive risk-free rate.
         assert result.signal == "VGIT"
 
+    def test_risk_free_windows_use_the_shared_anchor_month(self):
+        """If one equity series lags, the rf windows must follow the SHARED anchor.
+
+        `compute_signal` anchors both funds on the latest month present in both,
+        so anchoring the risk-free accumulation on the leading series alone would
+        shift every rf window a month forward against the equity returns.
+        """
+        histories = {
+            US_TICKER: list(zip(_MONTH_ENDS, [100.0] * 7))
+            + [(date(2026, 7, 31), 100.0)],
+            INTL_TICKER: list(zip(_MONTH_ENDS, [50.0] * 7)),  # no July bar
+        }
+        # Only the June month-end rate is non-zero. A June anchor earns month m
+        # the rate set at the end of month m-1, so June's rate can never appear
+        # in any window; a (wrong) July anchor puts it in all three.
+        rates = [(d, 0.0) for d in [date(2025, 11, 28)] + _MONTH_ENDS[:-1]]
+        rates.append((date(2026, 6, 30), 0.12))
+
+        history_patch = patch(
+            "dm.cli.get_price_history",
+            side_effect=lambda symbol, start, end: histories[symbol],
+        )
+        rates_patch = patch("dm.cli.get_tbill_rates", return_value=rates)
+        with history_patch, rates_patch:
+            result = build_signal(date(2026, 7, 31))
+
+        assert result.as_of == date(2026, 6, 30)
+        assert result.rf_returns == {
+            1: pytest.approx(0.0),
+            3: pytest.approx(0.0),
+            6: pytest.approx(0.0),
+        }
+
 
 class TestMain:
     """Tests for the main entry point."""
