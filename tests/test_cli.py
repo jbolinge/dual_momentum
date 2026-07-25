@@ -1,130 +1,239 @@
-"""Tests for CLI output."""
+"""Tests for CLI orchestration and output."""
 
+import re
 from datetime import date
 from unittest.mock import patch
 
-from dm.cli import main, format_output
-from dm.compare import InstrumentReturns
+import pytest
+
+from dm.cli import (
+    BOND_TICKER,
+    INTL_TICKER,
+    US_TICKER,
+    build_signal,
+    format_output,
+    main,
+)
+from dm.signals import SignalResult
+
+_MONTH_ENDS = [
+    date(2025, 12, 31),
+    date(2026, 1, 30),
+    date(2026, 2, 27),
+    date(2026, 3, 31),
+    date(2026, 4, 30),
+    date(2026, 5, 29),
+    date(2026, 6, 30),
+]
+
+TODAY = date(2026, 7, 15)
+
+
+def _bars(closes: list[float]) -> list[tuple[date, float]]:
+    """Month-end bars (Dec 2025 .. Jun 2026) plus one mid-July bar."""
+    return list(zip(_MONTH_ENDS, closes)) + [(date(2026, 7, 10), closes[-1])]
+
+
+def _rates(annual: float = 0.048) -> list[tuple[date, float]]:
+    return [(d, annual) for d in [date(2025, 11, 28)] + _MONTH_ENDS]
+
+
+def _result(
+    signal: str = "VXUS",
+    relative_winner: str = "VXUS",
+    us_score: float = 0.0495,
+    intl_score: float = 0.0984,
+    rf_score: float = 0.0104,
+) -> SignalResult:
+    return SignalResult(
+        as_of=date(2026, 6, 30),
+        us_returns={1: 0.0078, 3: 0.0366, 6: 0.1043},
+        intl_returns={1: 0.0527, 3: 0.0838, 6: 0.1587},
+        rf_returns={1: 0.0031, 3: 0.0094, 6: 0.0188},
+        us_score=us_score,
+        intl_score=intl_score,
+        rf_score=rf_score,
+        relative_winner=relative_winner,
+        signal=signal,
+    )
+
+
+class TestTickers:
+    """The CLI trades the user's live tickers."""
+
+    def test_pv_ticker_mapping(self):
+        assert (US_TICKER, INTL_TICKER, BOND_TICKER) == ("VOO", "VXUS", "VGIT")
 
 
 class TestFormatOutput:
     """Tests for output formatting."""
 
-    def test_format_output_single_winner(self):
-        """Test output format with single winner."""
-        voo = InstrumentReturns(
-            name="VOO",
-            returns_1m=0.05,
-            returns_3m=0.08,
-            returns_6m=0.12,
-            weighted_return=0.0833,
-        )
-        vxus = InstrumentReturns(
-            name="VXUS",
-            returns_1m=0.03,
-            returns_3m=0.05,
-            returns_6m=0.07,
-            weighted_return=0.05,
-        )
-        treasury = InstrumentReturns(
-            name="Treasury",
-            returns_1m=0.004,
-            returns_3m=0.012,
-            returns_6m=0.024,
-            weighted_return=0.0133,
-        )
-        winners = [voo]
+    def test_reports_each_instrument(self):
+        output = format_output(_result())
 
-        output = format_output(voo, vxus, treasury, winners)
+        assert "VOO:" in output
+        assert "VXUS:" in output
+        assert "T-bill" in output
 
-        assert "VOO" in output
-        assert "VXUS" in output
-        assert "Treasury" in output
-        assert "5.00%" in output  # VOO 1m
-        assert "8.00%" in output  # VOO 3m
-        assert "12.00%" in output  # VOO 6m
-        assert "8.33%" in output  # VOO weighted
-        assert "Signal: VOO" in output
+    def test_reports_lookback_returns_and_scores(self):
+        output = format_output(_result())
 
-    def test_format_output_multiple_winners(self):
-        """Test output format with multiple winners (tie)."""
-        voo = InstrumentReturns(
-            name="VOO",
-            returns_1m=0.05,
-            returns_3m=0.05,
-            returns_6m=0.05,
-            weighted_return=0.05,
+        assert "0.78%" in output  # VOO 1m
+        assert "3.66%" in output  # VOO 3m
+        assert "10.43%" in output  # VOO 6m
+        assert "4.95%" in output  # VOO score
+        assert "5.27%" in output  # VXUS 1m
+        assert "9.84%" in output  # VXUS score
+        assert "1.04%" in output  # risk-free score
+
+    def test_reports_as_of_month_end(self):
+        output = format_output(_result())
+
+        assert "2026-06-30" in output
+
+    def test_signal_line_is_greppable(self):
+        output = format_output(_result())
+
+        assert re.search(r"^Signal: VXUS\b", output, re.MULTILINE)
+
+    def test_reports_relative_momentum_winner(self):
+        output = format_output(_result())
+
+        assert re.search(r"^Relative momentum: VXUS\b", output, re.MULTILINE)
+
+    def test_reports_absolute_momentum_pass(self):
+        output = format_output(_result())
+
+        assert re.search(r"^Absolute momentum:", output, re.MULTILINE)
+        assert "VGIT" not in output
+
+    def test_reports_absolute_momentum_failure(self):
+        output = format_output(
+            _result(
+                signal="VGIT",
+                relative_winner="VOO",
+                us_score=-0.0752,
+                intl_score=-0.1530,
+                rf_score=0.0104,
+            )
         )
-        vxus = InstrumentReturns(
-            name="VXUS",
-            returns_1m=0.05,
-            returns_3m=0.05,
-            returns_6m=0.05,
-            weighted_return=0.05,
-        )
-        treasury = InstrumentReturns(
-            name="Treasury",
-            returns_1m=0.01,
-            returns_3m=0.01,
-            returns_6m=0.01,
-            weighted_return=0.01,
-        )
-        winners = [voo, vxus]
 
-        output = format_output(voo, vxus, treasury, winners)
+        assert re.search(r"^Relative momentum: VOO\b", output, re.MULTILINE)
+        assert "VGIT" in output
+        assert re.search(r"^Signal: VGIT\b", output, re.MULTILINE)
 
-        assert "Signal: VOO, VXUS" in output
+
+class TestBuildSignal:
+    """Tests for the fetch-and-compute orchestration."""
+
+    def _patched(self, us_closes, intl_closes, rates=None):
+        histories = {
+            US_TICKER: _bars(us_closes),
+            INTL_TICKER: _bars(intl_closes),
+        }
+        history_patch = patch(
+            "dm.cli.get_price_history",
+            side_effect=lambda symbol, start, end: histories[symbol],
+        )
+        rates_patch = patch(
+            "dm.cli.get_tbill_rates", return_value=rates if rates else _rates()
+        )
+        return history_patch, rates_patch
+
+    def test_anchors_on_latest_completed_month_end(self):
+        history_patch, rates_patch = self._patched(
+            [100.0, 101.0, 102.0, 103.0, 104.0, 105.0, 110.0], [50.0] * 7
+        )
+        with history_patch, rates_patch:
+            result = build_signal(TODAY)
+
+        assert result.as_of == date(2026, 6, 30)
+        assert result.us_returns[1] == pytest.approx(110.0 / 105.0 - 1)
+        assert result.signal == "VOO"
+
+    def test_uses_pv_tickers(self):
+        history_patch, rates_patch = self._patched(
+            [100.0] * 7, [50.0, 51.0, 52.0, 53.0, 54.0, 55.0, 60.0]
+        )
+        with history_patch as mock_history, rates_patch:
+            result = build_signal(TODAY)
+
+        assert sorted(call.args[0] for call in mock_history.call_args_list) == [
+            "VOO",
+            "VXUS",
+        ]
+        assert result.signal == "VXUS"
+
+    def test_one_history_fetch_per_symbol(self):
+        """Regression: credits budget. Exactly one price fetch per symbol."""
+        history_patch, rates_patch = self._patched([100.0] * 7, [50.0] * 7)
+        with history_patch as mock_history, rates_patch:
+            build_signal(TODAY)
+
+        assert mock_history.call_count == 2
+
+    def test_fetches_enough_history_for_the_six_month_lookback(self):
+        history_patch, rates_patch = self._patched([100.0] * 7, [50.0] * 7)
+        with history_patch as mock_history, rates_patch:
+            build_signal(TODAY)
+
+        for call in mock_history.call_args_list:
+            _symbol, start, end = call.args
+            assert start <= date(2025, 12, 1)  # covers the Dec 2025 month end
+            assert end == TODAY
+
+    def test_fetches_rates_covering_the_risk_free_windows(self):
+        history_patch, rates_patch = self._patched([100.0] * 7, [50.0] * 7)
+        with history_patch, rates_patch as mock_rates:
+            build_signal(TODAY)
+
+        start, end = mock_rates.call_args.args
+        # The 6-month window's first month is Jan 2026, whose rate is set at
+        # the end of Dec 2025.
+        assert start <= date(2025, 12, 1)
+        assert end == TODAY
+
+    def test_risk_free_returns_come_from_the_tbill_series(self):
+        history_patch, rates_patch = self._patched(
+            [100.0] * 7, [50.0] * 7, rates=_rates(0.12)
+        )
+        with history_patch, rates_patch:
+            result = build_signal(TODAY)
+
+        assert result.rf_returns[1] == pytest.approx(0.01)
+        assert result.rf_returns[6] == pytest.approx(1.01**6 - 1)
+        # Flat equities lose to a positive risk-free rate.
+        assert result.signal == "VGIT"
 
 
 class TestMain:
-    """Tests for main CLI function."""
+    """Tests for the main entry point."""
 
-    @patch("dm.cli.get_treasury_rate")
-    @patch("dm.cli.select_price_on_or_before")
+    @patch("dm.cli.get_tbill_rates", return_value=_rates())
     @patch("dm.cli.get_price_history")
-    def test_main_produces_output(
-        self, mock_history, mock_select, mock_treasury, capsys
-    ):
-        """Main composes the history fetch + per-date lookups + treasury call."""
-        mock_history.return_value = [(date(2024, 1, 1), 100.0)]
+    def test_prints_report(self, mock_history, _mock_rates, capsys):
+        mock_history.side_effect = lambda symbol, start, end: _bars(
+            [100.0, 101.0, 102.0, 103.0, 104.0, 105.0, 110.0]
+            if symbol == US_TICKER
+            else [50.0] * 7
+        )
 
-        # Return a sequence of prices so 1m/3m/6m returns are non-zero and
-        # differ between VOO and VXUS. 8 selects total (4 per symbol).
-        voo_prices = [105.0, 100.0, 97.0, 94.0]
-        vxus_prices = [51.5, 50.0, 49.0, 48.0]
+        main(today=TODAY)
 
-        call_count = {"VOO": 0, "VXUS": 0}
-
-        def select_side_effect(bars, target_date, symbol):
-            prices = voo_prices if symbol == "VOO" else vxus_prices
-            value = prices[call_count[symbol]]
-            call_count[symbol] += 1
-            return value
-
-        mock_select.side_effect = select_side_effect
-        mock_treasury.return_value = 0.05
-
-        main()
-
-        captured = capsys.readouterr()
-        output = captured.out
-        assert "VOO" in output
-        assert "VXUS" in output
-        assert "Treasury" in output
+        output = capsys.readouterr().out
+        assert "VOO:" in output
+        assert "VXUS:" in output
         assert "1-Month" in output
-        assert "Signal" in output
+        assert "2026-06-30" in output
+        assert re.search(r"^Signal: VOO\b", output, re.MULTILINE)
 
-    @patch("dm.cli.get_treasury_rate", return_value=0.05)
-    @patch("dm.cli.select_price_on_or_before", return_value=100.0)
+    @patch("dm.cli.get_tbill_rates", return_value=_rates())
     @patch("dm.cli.get_price_history")
-    def test_one_history_fetch_per_symbol(
-        self, mock_history, _mock_select, _mock_treasury, capsys
-    ):
-        """Regression: credits budget. Exactly one get_price_history call per symbol."""
-        mock_history.return_value = [(date(2024, 1, 1), 100.0)]
+    def test_defaults_to_today(self, mock_history, _mock_rates, capsys):
+        mock_history.side_effect = lambda symbol, start, end: _bars([100.0] * 7)
 
         main()
 
-        assert mock_history.call_count == 2
-        called_symbols = sorted(call.args[0] for call in mock_history.call_args_list)
-        assert called_symbols == ["VOO", "VXUS"]
+        _symbol, _start, end = mock_history.call_args.args
+        assert end == date.today()
+        assert "Signal:" in capsys.readouterr().out
