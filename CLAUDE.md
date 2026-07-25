@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-`dm` is a CLI application that implements a dual momentum strategy comparison. It calculates simple returns for VOO (US) and VXUS (International) ETFs over 1, 3, and 6 month periods, compares them against 30-day treasury returns, and recommends the instrument with the highest equally-weighted average return.
+`dm` is a CLI application that reproduces Portfolio Visualizer's Dual Momentum Model for the user's live tickers. At each month-end close it scores VOO (US) and VXUS (International) on the weighted average of their 1, 3, and 6 month total returns, compares the winner against the 3-month Treasury bill return, and prints the single ticker to hold for the coming month — VOO, VXUS, or VGIT (intermediate treasuries) when equity momentum is below the risk-free rate.
 
 ## Commands
 
@@ -32,33 +32,36 @@ uv run pytest tests/test_file.py::test_function_name -v
 
 ```
 src/dm/
-├── cli.py          # Entry point, output formatting
-├── data.py         # Data fetching (yfinance, FRED API)
-├── returns.py      # Return calculations
-└── compare.py      # Comparison logic and winner determination
+├── cli.py          # Entry point, fetch orchestration, output formatting
+├── data.py         # Data fetching (TwelveData primary, yfinance fallback, FRED)
+└── signals.py      # Pure signal engine: month-end anchoring, scores, decision rule
 tests/
 └── ...             # Mirror structure of src/dm/
 ```
 
 ### Data Flow
 
-1. `cli.py` orchestrates the workflow
-2. `data.py` fetches prices from yfinance (VOO, VXUS) and treasury rates from FRED (DGS1MO)
-3. `returns.py` calculates simple returns for each period, converting annualized treasury rate to period-equivalent returns
-4. `compare.py` computes weighted averages and determines the winner (1-month return breaks ties)
+1. `cli.py` fetches ~8 months of daily closes for VOO and VXUS (one request each) plus the DTB3 rate series, then hands them to the signal engine
+2. `data.py` fetches dividend-adjusted closes from TwelveData (`adjust=all`), falling back to yfinance (`auto_adjust=True`), and the 3-month T-bill series from FRED (DTB3)
+3. `signals.py` reduces daily bars to month-end closes, anchors on the latest completed month, computes 1/3/6-month total returns, weights them 33/33/34, and applies the dual-momentum rule
 
 ### Key Design Decisions
 
-- **Missing data handling**: If no data exists for a target date, use the most recent data prior to that date
-- **Treasury rate conversion**: Annualized rate converted to period returns (rate/12 for 1 month, rate/4 for 3 months, rate/2 for 6 months)
-- **Equal weighting**: All three time periods (1, 3, 6 months) weighted equally (1/3 each)
-- **Tiebreaker**: If weighted returns are equal, 1-month return determines winner; if still equal, both are displayed
+- **PV parity**: The methodology mirrors Portfolio Visualizer's Dual Momentum Model as documented in `Model_Backtest_20260725202812.pdf`; `backtest/` validates the engine against PV's own trade history
+- **Month-end anchoring**: Signals are evaluated only at end-of-month closes and held the following month. Month M becomes eligible once its last calendar day arrives, so a mid-July run anchors on June 30
+- **Total return required**: Momentum is computed on dividend-adjusted closes. TwelveData defaults to `adjust=splits`, which understates 6-month returns by tens of basis points, so `adjust=all` is mandatory
+- **Weighting**: 1, 3, and 6 month lookbacks weighted 33% / 33% / 34% (PV's weights), not equal thirds
+- **Risk-free rate**: FRED DTB3 (3-month T-bill). The return earned in month m uses the annual rate observed at the end of month m-1 divided by 12; window returns compound those monthly returns
+- **Decision rule**: Relative momentum picks the higher-scoring equity fund; absolute momentum swaps into VGIT only when that winner's score is strictly below the risk-free score
+- **Tiebreakers**: Equal equity scores prefer VOO; a winner tied with the risk-free score stays in equities
+- **Missing data handling**: If no observation exists for a target date, use the most recent data prior to that date
 
 ## Environment
 
 Requires `.env` file with:
 ```
 FRED_API_KEY=your_api_key_here
+TWELVEDATA_API_KEY=your_api_key_here
 ```
 
 ## Development Approach
