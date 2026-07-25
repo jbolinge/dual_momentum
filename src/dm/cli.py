@@ -2,116 +2,112 @@
 
 import sys
 import warnings
-from datetime import date, timedelta
+from datetime import date
+
 from dateutil.relativedelta import relativedelta
 
-from dm.data import (
-    TwelveDataFallbackWarning,
-    get_price_history,
-    get_treasury_rate,
-    select_price_on_or_before,
+from dm.data import TwelveDataFallbackWarning, get_price_history, get_tbill_rates
+from dm.signals import (
+    LOOKBACKS,
+    SignalResult,
+    accumulate_rf_returns,
+    anchor_month_end,
+    compute_signal,
 )
-from dm.returns import (
-    calculate_simple_return,
-    convert_treasury_rate,
-    calculate_weighted_return,
-)
-from dm.compare import determine_winner, InstrumentReturns
 
-# Padding before the earliest target date so the "most recent on or before"
-# lookup always has a trading day available across weekends/holidays.
-_HISTORY_PADDING_DAYS = 10
+US_TICKER = "VOO"
+INTL_TICKER = "VXUS"
+BOND_TICKER = "VGIT"
+
+# The signal anchors on the last completed month end and looks back 6 months,
+# so the fetch window has to reach into the month 7 months before today.
+_HISTORY_MONTHS = 8
+
+_SEPARATOR = "=" * 46
 
 
-def get_returns_for_symbol(symbol: str, today: date) -> tuple[float, float, float]:
-    """Calculate returns for a symbol over 1, 3, and 6 month periods.
+def build_signal(today: date) -> SignalResult:
+    """Fetch prices and T-bill rates, then evaluate the dual-momentum rule.
 
-    Fetches the 6-month price history once (one API call) and picks each
-    target date out of it locally. Avoids hitting TwelveData's per-minute
-    credit limit with four separate lookups.
-
-    Args:
-        symbol: Stock ticker symbol
-        today: Reference date (typically today)
-
-    Returns:
-        Tuple of (1-month return, 3-month return, 6-month return)
+    One price-history request per equity (two TwelveData credits per run); the
+    1/3/6-month lookbacks are resolved locally from month-end closes.
     """
-    date_1m = today - relativedelta(months=1)
-    date_3m = today - relativedelta(months=3)
-    date_6m = today - relativedelta(months=6)
+    history_start = today - relativedelta(months=_HISTORY_MONTHS)
+    us_bars = get_price_history(US_TICKER, history_start, today)
+    intl_bars = get_price_history(INTL_TICKER, history_start, today)
 
-    history_start = date_6m - timedelta(days=_HISTORY_PADDING_DAYS)
-    history = get_price_history(symbol, history_start, today)
+    # `compute_signal` anchors both funds on the latest month present in BOTH
+    # series, so the risk-free windows have to follow that shared anchor too.
+    us_anchor, _ = anchor_month_end(us_bars, today)
+    intl_anchor, _ = anchor_month_end(intl_bars, today)
+    anchor_date = min(us_anchor, intl_anchor)
 
-    current_price = select_price_on_or_before(history, today, symbol)
-    price_1m = select_price_on_or_before(history, date_1m, symbol)
-    price_3m = select_price_on_or_before(history, date_3m, symbol)
-    price_6m = select_price_on_or_before(history, date_6m, symbol)
+    rates = get_tbill_rates(anchor_date - relativedelta(months=_HISTORY_MONTHS), today)
+    rf_returns = accumulate_rf_returns(rates, anchor_date)
 
-    return_1m = calculate_simple_return(price_1m, current_price)
-    return_3m = calculate_simple_return(price_3m, current_price)
-    return_6m = calculate_simple_return(price_6m, current_price)
-
-    return return_1m, return_3m, return_6m
-
-
-def get_treasury_returns(today: date) -> tuple[float, float, float]:
-    """Get treasury returns for 1, 3, and 6 month periods.
-
-    Args:
-        today: Reference date
-
-    Returns:
-        Tuple of (1-month return, 3-month return, 6-month return)
-    """
-    annual_rate = get_treasury_rate(today)
-
-    return_1m = convert_treasury_rate(annual_rate, 1)
-    return_3m = convert_treasury_rate(annual_rate, 3)
-    return_6m = convert_treasury_rate(annual_rate, 6)
-
-    return return_1m, return_3m, return_6m
+    return compute_signal(
+        us_bars,
+        intl_bars,
+        rf_returns,
+        today,
+        us_ticker=US_TICKER,
+        intl_ticker=INTL_TICKER,
+        bond_ticker=BOND_TICKER,
+    )
 
 
-def format_output(
-    voo: InstrumentReturns,
-    vxus: InstrumentReturns,
-    treasury: InstrumentReturns,
-    winners: list[InstrumentReturns],
-) -> str:
-    """Format the output for display.
+def format_output(result: SignalResult) -> str:
+    """Render a signal result as the report printed by `dm`."""
+    lines = [
+        "Dual Momentum Analysis",
+        f"As of: {result.as_of} (month-end close)",
+        _SEPARATOR,
+        "",
+    ]
 
-    Args:
-        voo: VOO returns
-        vxus: VXUS returns
-        treasury: Treasury returns
-        winners: List of winning instrument(s)
-
-    Returns:
-        Formatted string for output
-    """
-    lines = []
-    lines.append("Dual Momentum Analysis")
-    lines.append("=" * 40)
-    lines.append("")
-
-    for inst in [voo, vxus, treasury]:
-        lines.append(f"{inst.name}:")
-        lines.append(f"  1-Month:  {inst.returns_1m * 100:>7.2f}%")
-        lines.append(f"  3-Month:  {inst.returns_3m * 100:>7.2f}%")
-        lines.append(f"  6-Month:  {inst.returns_6m * 100:>7.2f}%")
-        lines.append(f"  Weighted: {inst.weighted_return * 100:>7.2f}%")
+    blocks = [
+        (f"{US_TICKER}:", result.us_returns, result.us_score),
+        (f"{INTL_TICKER}:", result.intl_returns, result.intl_score),
+        ("Risk-free (3-month T-bill):", result.rf_returns, result.rf_score),
+    ]
+    for heading, returns, score in blocks:
+        lines.append(heading)
+        for months in LOOKBACKS:
+            lines.append(f"  {months}-Month: {_pct(returns[months])}")
+        lines.append(f"  Score:   {_pct(score)}")
         lines.append("")
 
-    lines.append("=" * 40)
-    if len(winners) == 1:
-        lines.append(f"Signal: {winners[0].name}")
+    loser, loser_score = (
+        (INTL_TICKER, result.intl_score)
+        if result.relative_winner == US_TICKER
+        else (US_TICKER, result.us_score)
+    )
+    winner_score = max(result.us_score, result.intl_score)
+
+    lines.append(_SEPARATOR)
+    lines.append(
+        f"Relative momentum: {result.relative_winner} {_pct(winner_score).strip()} "
+        f"beats {loser} {_pct(loser_score).strip()}"
+    )
+    if result.signal == BOND_TICKER:
+        lines.append(
+            f"Absolute momentum: {result.relative_winner} "
+            f"{_pct(winner_score).strip()} is below the risk-free "
+            f"{_pct(result.rf_score).strip()} -> out of the market"
+        )
     else:
-        winner_names = ", ".join(w.name for w in winners)
-        lines.append(f"Signal: {winner_names}")
+        lines.append(
+            f"Absolute momentum: {result.relative_winner} "
+            f"{_pct(winner_score).strip()} clears the risk-free "
+            f"{_pct(result.rf_score).strip()} -> stay in the market"
+        )
+    lines.append(f"Signal: {result.signal} (hold from {result.as_of})")
 
     return "\n".join(lines)
+
+
+def _pct(value: float) -> str:
+    return f"{value * 100:>7.2f}%"
 
 
 def _configure_warnings() -> None:
@@ -136,33 +132,11 @@ def _configure_warnings() -> None:
     warnings.showwarning = showwarning
 
 
-def main():
+def main(today: date | None = None):
     """Main entry point for the dm CLI."""
     _configure_warnings()
 
-    today = date.today()
-
-    # Get returns for each instrument
-    voo_1m, voo_3m, voo_6m = get_returns_for_symbol("VOO", today)
-    vxus_1m, vxus_3m, vxus_6m = get_returns_for_symbol("VXUS", today)
-    tsy_1m, tsy_3m, tsy_6m = get_treasury_returns(today)
-
-    # Calculate weighted returns
-    voo_weighted = calculate_weighted_return([voo_1m, voo_3m, voo_6m])
-    vxus_weighted = calculate_weighted_return([vxus_1m, vxus_3m, vxus_6m])
-    tsy_weighted = calculate_weighted_return([tsy_1m, tsy_3m, tsy_6m])
-
-    # Create instrument objects
-    voo = InstrumentReturns("VOO", voo_1m, voo_3m, voo_6m, voo_weighted)
-    vxus = InstrumentReturns("VXUS", vxus_1m, vxus_3m, vxus_6m, vxus_weighted)
-    treasury = InstrumentReturns("Treasury", tsy_1m, tsy_3m, tsy_6m, tsy_weighted)
-
-    # Determine winner
-    winners = determine_winner(voo, vxus, treasury)
-
-    # Output results
-    output = format_output(voo, vxus, treasury, winners)
-    print(output)
+    print(format_output(build_signal(today or date.today())))
 
 
 if __name__ == "__main__":

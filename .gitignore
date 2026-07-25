@@ -34,3 +34,6 @@ Thumbs.db
 
 # Claude
 .claude/.ralph-loop.local.md
+
+# Backtest vendor-data cache
+backtest/cache/
