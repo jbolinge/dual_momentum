@@ -14,6 +14,7 @@ from dm.data import (
     _get_price_yfinance,
     get_price,
     get_price_history,
+    get_tbill_rates,
     get_treasury_rate,
 )
 
@@ -121,6 +122,122 @@ class TestGetTreasuryRate:
         result = get_treasury_rate(date(2024, 1, 15))
 
         assert result == pytest.approx(0.046)
+
+
+class TestGetTBillRates:
+    """Tests for `get_tbill_rates` — the FRED DTB3 3-month T-bill series."""
+
+    def _patched_fred(self, mock_fred_class, series):
+        mock_fred = Mock()
+        mock_fred_class.return_value = mock_fred
+        mock_fred.get_series.return_value = series
+        return mock_fred
+
+    @patch("dm.data.Fred")
+    @patch("dm.data.load_dotenv")
+    @patch("dm.data.os.getenv")
+    def test_returns_dated_decimal_rates(
+        self, mock_getenv, _mock_load_dotenv, mock_fred_class
+    ):
+        mock_getenv.return_value = "fake_api_key"
+        self._patched_fred(
+            mock_fred_class,
+            pd.Series(
+                [5.25, 5.30, 5.28],
+                index=pd.to_datetime(["2024-01-08", "2024-01-09", "2024-01-10"]),
+            ),
+        )
+
+        rates = get_tbill_rates(date(2024, 1, 1), date(2024, 1, 10))
+
+        assert rates == [
+            (date(2024, 1, 8), pytest.approx(0.0525)),
+            (date(2024, 1, 9), pytest.approx(0.0530)),
+            (date(2024, 1, 10), pytest.approx(0.0528)),
+        ]
+
+    @patch("dm.data.Fred")
+    @patch("dm.data.load_dotenv")
+    @patch("dm.data.os.getenv")
+    def test_requests_dtb3_over_the_window(
+        self, mock_getenv, _mock_load_dotenv, mock_fred_class
+    ):
+        """PV's risk-free benchmark is the 3-month T-bill, not the 1-month."""
+        mock_getenv.return_value = "fake_api_key"
+        mock_fred = self._patched_fred(
+            mock_fred_class,
+            pd.Series([5.25], index=pd.to_datetime(["2024-01-10"])),
+        )
+
+        get_tbill_rates(date(2023, 6, 1), date(2024, 1, 10))
+
+        args, _kwargs = mock_fred.get_series.call_args
+        assert args[0] == "DTB3"
+        assert args[1] == date(2023, 6, 1)
+        assert args[2] == date(2024, 1, 10)
+
+    @patch("dm.data.Fred")
+    @patch("dm.data.load_dotenv")
+    @patch("dm.data.os.getenv")
+    def test_drops_nan_observations(
+        self, mock_getenv, _mock_load_dotenv, mock_fred_class
+    ):
+        """FRED marks market holidays as NaN."""
+        mock_getenv.return_value = "fake_api_key"
+        self._patched_fred(
+            mock_fred_class,
+            pd.Series(
+                [5.25, float("nan"), 5.28],
+                index=pd.to_datetime(["2024-01-08", "2024-01-09", "2024-01-10"]),
+            ),
+        )
+
+        rates = get_tbill_rates(date(2024, 1, 1), date(2024, 1, 10))
+
+        assert [d for d, _ in rates] == [date(2024, 1, 8), date(2024, 1, 10)]
+
+    @patch("dm.data.Fred")
+    @patch("dm.data.load_dotenv")
+    @patch("dm.data.os.getenv")
+    def test_raises_when_api_key_missing(
+        self, mock_getenv, _mock_load_dotenv, mock_fred_class
+    ):
+        mock_getenv.return_value = None
+
+        with pytest.raises(ValueError, match="FRED_API_KEY"):
+            get_tbill_rates(date(2024, 1, 1), date(2024, 1, 10))
+
+        mock_fred_class.assert_not_called()
+
+    @patch("dm.data.Fred")
+    @patch("dm.data.load_dotenv")
+    @patch("dm.data.os.getenv")
+    def test_raises_on_empty_series(
+        self, mock_getenv, _mock_load_dotenv, mock_fred_class
+    ):
+        mock_getenv.return_value = "fake_api_key"
+        self._patched_fred(mock_fred_class, pd.Series(dtype=float))
+
+        with pytest.raises(ValueError, match="No T-bill rate data"):
+            get_tbill_rates(date(2024, 1, 1), date(2024, 1, 10))
+
+    @patch("dm.data.Fred")
+    @patch("dm.data.load_dotenv")
+    @patch("dm.data.os.getenv")
+    def test_raises_when_every_observation_is_nan(
+        self, mock_getenv, _mock_load_dotenv, mock_fred_class
+    ):
+        mock_getenv.return_value = "fake_api_key"
+        self._patched_fred(
+            mock_fred_class,
+            pd.Series(
+                [float("nan"), float("nan")],
+                index=pd.to_datetime(["2024-01-08", "2024-01-09"]),
+            ),
+        )
+
+        with pytest.raises(ValueError, match="No T-bill rate data"):
+            get_tbill_rates(date(2024, 1, 1), date(2024, 1, 10))
 
 
 def _td_response(values: list[dict] | None = None, body: dict | None = None) -> Mock:
@@ -377,6 +494,23 @@ class TestGetPriceHistoryTwelveData:
 
     @patch("dm.data.requests.get")
     @patch("dm.data.os.getenv")
+    def test_requests_dividend_adjusted_closes(self, mock_getenv, mock_get):
+        """Momentum needs total return: TwelveData must adjust for dividends.
+
+        TwelveData defaults to `adjust=splits`, which leaves dividends out and
+        understates 6-month returns by tens of basis points.
+        """
+        mock_getenv.return_value = "fake_key"
+        mock_get.return_value = _td_response(
+            values=[{"datetime": "2024-06-10", "close": "500.00"}],
+        )
+
+        _get_price_history_twelvedata("VXUS", date(2024, 1, 10), date(2024, 6, 10))
+
+        assert mock_get.call_args.kwargs["params"]["adjust"] == "all"
+
+    @patch("dm.data.requests.get")
+    @patch("dm.data.os.getenv")
     def test_parses_iso_datetime_with_time_component(self, mock_getenv, mock_get):
         mock_getenv.return_value = "fake_key"
         mock_get.return_value = _td_response(
@@ -464,6 +598,19 @@ class TestGetPriceHistoryYFinance:
         args, kwargs = mock_ticker.history.call_args
         assert kwargs["start"] == date(2024, 1, 1)
         assert kwargs["end"] == date(2024, 1, 11)  # exclusive, so +1 day
+
+    @patch("dm.data.yf.Ticker")
+    def test_requests_dividend_adjusted_closes(self, mock_ticker_class):
+        """Momentum needs total return, so auto_adjust must be explicit."""
+        mock_ticker = Mock()
+        mock_ticker_class.return_value = mock_ticker
+        mock_ticker.history.return_value = pd.DataFrame(
+            {"Close": [100.0]}, index=pd.to_datetime(["2024-01-10"])
+        )
+
+        _get_price_history_yfinance("VOO", date(2024, 1, 1), date(2024, 1, 10))
+
+        assert mock_ticker.history.call_args.kwargs["auto_adjust"] is True
 
     @patch("dm.data.yf.Ticker")
     def test_raises_on_empty_history(self, mock_ticker_class):
