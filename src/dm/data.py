@@ -10,7 +10,6 @@ from dotenv import load_dotenv
 from fredapi import Fred
 
 _TWELVEDATA_URL = "https://api.twelvedata.com/time_series"
-_PRICE_WINDOW_DAYS = 10
 _REQUEST_TIMEOUT_SECONDS = 10
 
 
@@ -26,24 +25,6 @@ def _reset_fallback_warning() -> None:
     """Reset the fallback-warning latch (for tests)."""
     global _fallback_warned
     _fallback_warned = False
-
-
-def select_price_on_or_before(
-    bars: list[tuple[date, float]], target_date: date, symbol: str
-) -> float:
-    """Return the close price for the most recent bar dated on or before target.
-
-    Use this to pick a single price out of a wide history window, e.g. the
-    result of `get_price_history`. The `symbol` argument is only used to
-    build the error message when no usable bar exists.
-    """
-    if not bars:
-        raise ValueError(f"No price data found for {symbol}")
-    valid = [(d, p) for d, p in bars if d <= target_date]
-    if not valid:
-        raise ValueError(f"No price data found for {symbol} on or before {target_date}")
-    valid.sort(key=lambda x: x[0])
-    return valid[-1][1]
 
 
 def _get_price_history_twelvedata(
@@ -92,13 +73,6 @@ def _get_price_history_twelvedata(
     return [(date.fromisoformat(v["datetime"][:10]), float(v["close"])) for v in values]
 
 
-def _get_price_twelvedata(symbol: str, target_date: date) -> float:
-    """Fetch closing price from TwelveData for `symbol` on or before `target_date`."""
-    start_date = target_date - timedelta(days=_PRICE_WINDOW_DAYS)
-    bars = _get_price_history_twelvedata(symbol, start_date, target_date)
-    return select_price_on_or_before(bars, target_date, symbol)
-
-
 def _get_price_history_yfinance(
     symbol: str, start_date: date, end_date: date
 ) -> list[tuple[date, float]]:
@@ -124,13 +98,6 @@ def _get_price_history_yfinance(
     ]
 
 
-def _get_price_yfinance(symbol: str, target_date: date) -> float:
-    """Fetch closing price from yfinance for `symbol` on or before `target_date`."""
-    start_date = target_date - timedelta(days=_PRICE_WINDOW_DAYS)
-    bars = _get_price_history_yfinance(symbol, start_date, target_date)
-    return select_price_on_or_before(bars, target_date, symbol)
-
-
 def _call_with_fallback(primary, fallback):
     """Run `primary()`; on any exception, warn once per process and run `fallback()`."""
     global _fallback_warned
@@ -147,72 +114,18 @@ def _call_with_fallback(primary, fallback):
         return fallback()
 
 
-def get_price(symbol: str, target_date: date) -> float:
-    """Fetch closing price for a security on or before target date.
-
-    Tries TwelveData first; on any failure, warns and falls back to yfinance.
-
-    Args:
-        symbol: Stock ticker symbol (e.g., 'VOO', 'VXUS')
-        target_date: Date to fetch price for
-
-    Returns:
-        Closing price. If no data for exact date, returns most recent prior.
-    """
-    return _call_with_fallback(
-        lambda: _get_price_twelvedata(symbol, target_date),
-        lambda: _get_price_yfinance(symbol, target_date),
-    )
-
-
 def get_price_history(
     symbol: str, start_date: date, end_date: date
 ) -> list[tuple[date, float]]:
     """Fetch daily close bars for a symbol in [start_date, end_date].
 
+    Both sources return dividend- and split-adjusted (total return) closes.
     Tries TwelveData first; on any failure, warns and falls back to yfinance.
-    Use `select_price_on_or_before` to pick a single target date out of the
-    returned list — one wide-window fetch serves many target-date lookups.
     """
     return _call_with_fallback(
         lambda: _get_price_history_twelvedata(symbol, start_date, end_date),
         lambda: _get_price_history_yfinance(symbol, start_date, end_date),
     )
-
-
-def get_treasury_rate(target_date: date) -> float:
-    """Fetch 1-month treasury rate from FRED on or before target date.
-
-    Args:
-        target_date: Date to fetch rate for
-
-    Returns:
-        Annualized rate as decimal (e.g., 0.05 for 5%).
-        If no data for exact date, returns most recent prior.
-    """
-    load_dotenv()
-    api_key = os.getenv("FRED_API_KEY")
-
-    if not api_key:
-        raise ValueError("FRED_API_KEY not found in environment")
-
-    fred = Fred(api_key=api_key)
-
-    # Fetch DGS1MO series (1-Month Treasury Constant Maturity Rate)
-    start_date = target_date - timedelta(days=30)
-    series = fred.get_series("DGS1MO", start_date, target_date)
-
-    if series.empty:
-        raise ValueError(f"No treasury rate data found for {target_date}")
-
-    # Get most recent rate on or before target date
-    valid_rates = series[series.index.date <= target_date]
-
-    if valid_rates.empty:
-        raise ValueError(f"No treasury rate data found on or before {target_date}")
-
-    # FRED returns rate as percentage (e.g., 5.0), convert to decimal
-    return float(valid_rates.iloc[-1]) / 100
 
 
 def get_tbill_rates(start_date: date, end_date: date) -> list[tuple[date, float]]:
