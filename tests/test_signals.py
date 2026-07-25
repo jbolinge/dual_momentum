@@ -304,7 +304,7 @@ class TestComputeSignal:
         """Both equity scores below the risk-free score => hold the bond fund."""
         result = compute_signal(
             _series([100.0, 99.0, 98.0, 97.0, 96.0, 95.0, 90.0]),
-            _series([50.0, 49.0, 48.0, 47.0, 46.0, 45.0, 44.0]),
+            _series([50.0, 49.0, 48.0, 47.0, 46.0, 45.0, 40.0]),
             self.RF_FLAT,
             date(2026, 7, 15),
         )
