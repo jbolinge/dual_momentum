@@ -48,7 +48,7 @@ tests/
 ### Key Design Decisions
 
 - **PV parity**: The methodology mirrors Portfolio Visualizer's Dual Momentum Model as documented in `Model_Backtest_20260725202812.pdf`; `backtest/` validates the engine against PV's own trade history
-- **Month-end anchoring**: Signals are evaluated only at end-of-month closes and held the following month. Month M becomes eligible once its last calendar day arrives, so a mid-July run anchors on June 30
+- **Month-end anchoring**: Signals are evaluated only at end-of-month closes and held the following month. Month M becomes eligible once its last calendar day arrives, so a mid-July run anchors on June 30. Run `dm` on or after the 1st of the month — running on a month's last calendar day before the close is posted would anchor on the second-to-last trading day (~3% historical signal-flip risk)
 - **Total return required**: Momentum is computed on dividend-adjusted closes. TwelveData defaults to `adjust=splits`, which understates 6-month returns by tens of basis points, so `adjust=all` is mandatory
 - **Weighting**: 1, 3, and 6 month lookbacks weighted 33% / 33% / 34% (PV's weights), not equal thirds
 - **Risk-free rate**: FRED DTB3 (3-month T-bill). The return earned in month m uses the annual rate observed at the end of month m-1 divided by 12; window returns compound those monthly returns

@@ -17,6 +17,8 @@ The specific implementation reproduces [Portfolio Visualizer](https://www.portfo
 
 The model is always 100% in exactly one of VOO, VXUS, or VGIT. The rules-based approach removes emotional decision-making from the investment process, replacing gut feelings with systematic, repeatable analysis.
 
+> **When to run**: run `dm` on or after the 1st of the month to get the prior month's final signal. Running *on* the last calendar day of a month before that day's close is posted would silently anchor on the second-to-last trading day — over the 1997-2026 backtest, that one-day-early anchor would have flipped the signal in about 3% of months.
+
 ## Installation
 
 ```bash

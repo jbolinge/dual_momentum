@@ -1,0 +1,674 @@
+[
+  {
+    "num": 1,
+    "start": "1997-01-01",
+    "end": "1998-08-31",
+    "trade_date": "1996-12-31",
+    "ticker": "VFINX"
+  },
+  {
+    "num": 2,
+    "start": "1998-09-01",
+    "end": "1998-10-31",
+    "trade_date": "1998-08-31",
+    "ticker": "VFITX"
+  },
+  {
+    "num": 3,
+    "start": "1998-11-01",
+    "end": "1999-07-31",
+    "trade_date": "1998-10-30",
+    "ticker": "VFINX"
+  },
+  {
+    "num": 4,
+    "start": "1999-08-01",
+    "end": "2000-03-31",
+    "trade_date": "1999-07-30",
+    "ticker": "VGTSX"
+  },
+  {
+    "num": 5,
+    "start": "2000-04-01",
+    "end": "2000-06-30",
+    "trade_date": "2000-03-31",
+    "ticker": "VFINX"
+  },
+  {
+    "num": 6,
+    "start": "2000-07-01",
+    "end": "2000-08-31",
+    "trade_date": "2000-06-30",
+    "ticker": "VFITX"
+  },
+  {
+    "num": 7,
+    "start": "2000-09-01",
+    "end": "2000-09-30",
+    "trade_date": "2000-08-31",
+    "ticker": "VFINX"
+  },
+  {
+    "num": 8,
+    "start": "2000-10-01",
+    "end": "2001-12-31",
+    "trade_date": "2000-09-29",
+    "ticker": "VFITX"
+  },
+  {
+    "num": 9,
+    "start": "2002-01-01",
+    "end": "2002-01-31",
+    "trade_date": "2001-12-31",
+    "ticker": "VFINX"
+  },
+  {
+    "num": 10,
+    "start": "2002-02-01",
+    "end": "2002-03-31",
+    "trade_date": "2002-01-31",
+    "ticker": "VFITX"
+  },
+  {
+    "num": 11,
+    "start": "2002-04-01",
+    "end": "2002-06-30",
+    "trade_date": "2002-03-28",
+    "ticker": "VGTSX"
+  },
+  {
+    "num": 12,
+    "start": "2002-07-01",
+    "end": "2003-03-31",
+    "trade_date": "2002-06-28",
+    "ticker": "VFITX"
+  },
+  {
+    "num": 13,
+    "start": "2003-04-01",
+    "end": "2003-06-30",
+    "trade_date": "2003-03-31",
+    "ticker": "VFINX"
+  },
+  {
+    "num": 14,
+    "start": "2003-07-01",
+    "end": "2004-06-30",
+    "trade_date": "2003-06-30",
+    "ticker": "VGTSX"
+  },
+  {
+    "num": 15,
+    "start": "2004-07-01",
+    "end": "2004-07-31",
+    "trade_date": "2004-06-30",
+    "ticker": "VFINX"
+  },
+  {
+    "num": 16,
+    "start": "2004-08-01",
+    "end": "2004-09-30",
+    "trade_date": "2004-07-30",
+    "ticker": "VFITX"
+  },
+  {
+    "num": 17,
+    "start": "2004-10-01",
+    "end": "2005-05-31",
+    "trade_date": "2004-09-30",
+    "ticker": "VGTSX"
+  },
+  {
+    "num": 18,
+    "start": "2005-06-01",
+    "end": "2005-06-30",
+    "trade_date": "2005-05-31",
+    "ticker": "VFINX"
+  },
+  {
+    "num": 19,
+    "start": "2005-07-01",
+    "end": "2005-07-31",
+    "trade_date": "2005-06-30",
+    "ticker": "VFITX"
+  },
+  {
+    "num": 20,
+    "start": "2005-08-01",
+    "end": "2005-08-31",
+    "trade_date": "2005-07-29",
+    "ticker": "VFINX"
+  },
+  {
+    "num": 21,
+    "start": "2005-09-01",
+    "end": "2006-07-31",
+    "trade_date": "2005-08-31",
+    "ticker": "VGTSX"
+  },
+  {
+    "num": 22,
+    "start": "2006-08-01",
+    "end": "2006-08-31",
+    "trade_date": "2006-07-31",
+    "ticker": "VFITX"
+  },
+  {
+    "num": 23,
+    "start": "2006-09-01",
+    "end": "2006-09-30",
+    "trade_date": "2006-08-31",
+    "ticker": "VGTSX"
+  },
+  {
+    "num": 24,
+    "start": "2006-10-01",
+    "end": "2006-11-30",
+    "trade_date": "2006-09-29",
+    "ticker": "VFINX"
+  },
+  {
+    "num": 25,
+    "start": "2006-12-01",
+    "end": "2007-12-31",
+    "trade_date": "2006-11-30",
+    "ticker": "VGTSX"
+  },
+  {
+    "num": 26,
+    "start": "2008-01-01",
+    "end": "2008-05-31",
+    "trade_date": "2007-12-31",
+    "ticker": "VFITX"
+  },
+  {
+    "num": 27,
+    "start": "2008-06-01",
+    "end": "2008-06-30",
+    "trade_date": "2008-05-30",
+    "ticker": "VGTSX"
+  },
+  {
+    "num": 28,
+    "start": "2008-07-01",
+    "end": "2009-04-30",
+    "trade_date": "2008-06-30",
+    "ticker": "VFITX"
+  },
+  {
+    "num": 29,
+    "start": "2009-05-01",
+    "end": "2009-11-30",
+    "trade_date": "2009-04-30",
+    "ticker": "VGTSX"
+  },
+  {
+    "num": 30,
+    "start": "2009-12-01",
+    "end": "2010-05-31",
+    "trade_date": "2009-11-30",
+    "ticker": "VFINX"
+  },
+  {
+    "num": 31,
+    "start": "2010-06-01",
+    "end": "2010-07-31",
+    "trade_date": "2010-05-28",
+    "ticker": "VFITX"
+  },
+  {
+    "num": 32,
+    "start": "2010-08-01",
+    "end": "2010-11-30",
+    "trade_date": "2010-07-30",
+    "ticker": "VGTSX"
+  },
+  {
+    "num": 33,
+    "start": "2010-12-01",
+    "end": "2010-12-31",
+    "trade_date": "2010-11-30",
+    "ticker": "VFINX"
+  },
+  {
+    "num": 34,
+    "start": "2011-01-01",
+    "end": "2011-01-31",
+    "trade_date": "2010-12-31",
+    "ticker": "VGTSX"
+  },
+  {
+    "num": 35,
+    "start": "2011-02-01",
+    "end": "2011-07-31",
+    "trade_date": "2011-01-31",
+    "ticker": "VFINX"
+  },
+  {
+    "num": 36,
+    "start": "2011-08-01",
+    "end": "2011-10-31",
+    "trade_date": "2011-07-29",
+    "ticker": "VFITX"
+  },
+  {
+    "num": 37,
+    "start": "2011-11-01",
+    "end": "2011-11-30",
+    "trade_date": "2011-10-31",
+    "ticker": "VFINX"
+  },
+  {
+    "num": 38,
+    "start": "2011-12-01",
+    "end": "2011-12-31",
+    "trade_date": "2011-11-30",
+    "ticker": "VFITX"
+  },
+  {
+    "num": 39,
+    "start": "2012-01-01",
+    "end": "2012-05-31",
+    "trade_date": "2011-12-30",
+    "ticker": "VFINX"
+  },
+  {
+    "num": 40,
+    "start": "2012-06-01",
+    "end": "2012-06-30",
+    "trade_date": "2012-05-31",
+    "ticker": "VFITX"
+  },
+  {
+    "num": 41,
+    "start": "2012-07-01",
+    "end": "2012-10-31",
+    "trade_date": "2012-06-29",
+    "ticker": "VFINX"
+  },
+  {
+    "num": 42,
+    "start": "2012-11-01",
+    "end": "2013-03-31",
+    "trade_date": "2012-10-31",
+    "ticker": "VGTSX"
+  },
+  {
+    "num": 43,
+    "start": "2013-04-01",
+    "end": "2013-09-30",
+    "trade_date": "2013-03-28",
+    "ticker": "VFINX"
+  },
+  {
+    "num": 44,
+    "start": "2013-10-01",
+    "end": "2013-10-31",
+    "trade_date": "2013-09-30",
+    "ticker": "VGTSX"
+  },
+  {
+    "num": 45,
+    "start": "2013-11-01",
+    "end": "2015-04-30",
+    "trade_date": "2013-10-31",
+    "ticker": "VFINX"
+  },
+  {
+    "num": 46,
+    "start": "2015-05-01",
+    "end": "2015-07-31",
+    "trade_date": "2015-04-30",
+    "ticker": "VGTSX"
+  },
+  {
+    "num": 47,
+    "start": "2015-08-01",
+    "end": "2015-08-31",
+    "trade_date": "2015-07-31",
+    "ticker": "VFINX"
+  },
+  {
+    "num": 48,
+    "start": "2015-09-01",
+    "end": "2015-10-31",
+    "trade_date": "2015-08-31",
+    "ticker": "VFITX"
+  },
+  {
+    "num": 49,
+    "start": "2015-11-01",
+    "end": "2016-01-31",
+    "trade_date": "2015-10-30",
+    "ticker": "VFINX"
+  },
+  {
+    "num": 50,
+    "start": "2016-02-01",
+    "end": "2016-03-31",
+    "trade_date": "2016-01-29",
+    "ticker": "VFITX"
+  },
+  {
+    "num": 51,
+    "start": "2016-04-01",
+    "end": "2016-04-30",
+    "trade_date": "2016-03-31",
+    "ticker": "VFINX"
+  },
+  {
+    "num": 52,
+    "start": "2016-05-01",
+    "end": "2016-05-31",
+    "trade_date": "2016-04-29",
+    "ticker": "VGTSX"
+  },
+  {
+    "num": 53,
+    "start": "2016-06-01",
+    "end": "2016-08-31",
+    "trade_date": "2016-05-31",
+    "ticker": "VFINX"
+  },
+  {
+    "num": 54,
+    "start": "2016-09-01",
+    "end": "2016-11-30",
+    "trade_date": "2016-08-31",
+    "ticker": "VGTSX"
+  },
+  {
+    "num": 55,
+    "start": "2016-12-01",
+    "end": "2017-03-31",
+    "trade_date": "2016-11-30",
+    "ticker": "VFINX"
+  },
+  {
+    "num": 56,
+    "start": "2017-04-01",
+    "end": "2017-04-30",
+    "trade_date": "2017-03-31",
+    "ticker": "VGTSX"
+  },
+  {
+    "num": 57,
+    "start": "2017-05-01",
+    "end": "2017-05-31",
+    "trade_date": "2017-04-28",
+    "ticker": "VFINX"
+  },
+  {
+    "num": 58,
+    "start": "2017-06-01",
+    "end": "2017-11-30",
+    "trade_date": "2017-05-31",
+    "ticker": "VGTSX"
+  },
+  {
+    "num": 59,
+    "start": "2017-12-01",
+    "end": "2018-03-31",
+    "trade_date": "2017-11-30",
+    "ticker": "VFINX"
+  },
+  {
+    "num": 60,
+    "start": "2018-04-01",
+    "end": "2018-04-30",
+    "trade_date": "2018-03-29",
+    "ticker": "VGTSX"
+  },
+  {
+    "num": 61,
+    "start": "2018-05-01",
+    "end": "2018-05-31",
+    "trade_date": "2018-04-30",
+    "ticker": "VFITX"
+  },
+  {
+    "num": 62,
+    "start": "2018-06-01",
+    "end": "2018-10-31",
+    "trade_date": "2018-05-31",
+    "ticker": "VFINX"
+  },
+  {
+    "num": 63,
+    "start": "2018-11-01",
+    "end": "2019-01-31",
+    "trade_date": "2018-10-31",
+    "ticker": "VFITX"
+  },
+  {
+    "num": 64,
+    "start": "2019-02-01",
+    "end": "2019-02-28",
+    "trade_date": "2019-01-31",
+    "ticker": "VFINX"
+  },
+  {
+    "num": 65,
+    "start": "2019-03-01",
+    "end": "2019-03-31",
+    "trade_date": "2019-02-28",
+    "ticker": "VGTSX"
+  },
+  {
+    "num": 66,
+    "start": "2019-04-01",
+    "end": "2019-05-31",
+    "trade_date": "2019-03-29",
+    "ticker": "VFINX"
+  },
+  {
+    "num": 67,
+    "start": "2019-06-01",
+    "end": "2019-06-30",
+    "trade_date": "2019-05-31",
+    "ticker": "VFITX"
+  },
+  {
+    "num": 68,
+    "start": "2019-07-01",
+    "end": "2019-10-31",
+    "trade_date": "2019-06-28",
+    "ticker": "VFINX"
+  },
+  {
+    "num": 69,
+    "start": "2019-11-01",
+    "end": "2019-11-30",
+    "trade_date": "2019-10-31",
+    "ticker": "VGTSX"
+  },
+  {
+    "num": 70,
+    "start": "2019-12-01",
+    "end": "2020-02-29",
+    "trade_date": "2019-11-29",
+    "ticker": "VFINX"
+  },
+  {
+    "num": 71,
+    "start": "2020-03-01",
+    "end": "2020-05-31",
+    "trade_date": "2020-02-28",
+    "ticker": "VFITX"
+  },
+  {
+    "num": 72,
+    "start": "2020-06-01",
+    "end": "2020-10-31",
+    "trade_date": "2020-05-29",
+    "ticker": "VFINX"
+  },
+  {
+    "num": 73,
+    "start": "2020-11-01",
+    "end": "2021-03-31",
+    "trade_date": "2020-10-30",
+    "ticker": "VGTSX"
+  },
+  {
+    "num": 74,
+    "start": "2021-04-01",
+    "end": "2022-01-31",
+    "trade_date": "2021-03-31",
+    "ticker": "VFINX"
+  },
+  {
+    "num": 75,
+    "start": "2022-02-01",
+    "end": "2022-03-31",
+    "trade_date": "2022-01-31",
+    "ticker": "VFITX"
+  },
+  {
+    "num": 76,
+    "start": "2022-04-01",
+    "end": "2022-04-30",
+    "trade_date": "2022-03-31",
+    "ticker": "VFINX"
+  },
+  {
+    "num": 77,
+    "start": "2022-05-01",
+    "end": "2022-07-31",
+    "trade_date": "2022-04-29",
+    "ticker": "VFITX"
+  },
+  {
+    "num": 78,
+    "start": "2022-08-01",
+    "end": "2022-08-31",
+    "trade_date": "2022-07-29",
+    "ticker": "VFINX"
+  },
+  {
+    "num": 79,
+    "start": "2022-09-01",
+    "end": "2022-11-30",
+    "trade_date": "2022-08-31",
+    "ticker": "VFITX"
+  },
+  {
+    "num": 80,
+    "start": "2022-12-01",
+    "end": "2023-05-31",
+    "trade_date": "2022-11-30",
+    "ticker": "VGTSX"
+  },
+  {
+    "num": 81,
+    "start": "2023-06-01",
+    "end": "2023-09-30",
+    "trade_date": "2023-05-31",
+    "ticker": "VFINX"
+  },
+  {
+    "num": 82,
+    "start": "2023-10-01",
+    "end": "2023-11-30",
+    "trade_date": "2023-09-29",
+    "ticker": "VFITX"
+  },
+  {
+    "num": 83,
+    "start": "2023-12-01",
+    "end": "2024-09-30",
+    "trade_date": "2023-11-30",
+    "ticker": "VFINX"
+  },
+  {
+    "num": 84,
+    "start": "2024-10-01",
+    "end": "2024-10-31",
+    "trade_date": "2024-09-30",
+    "ticker": "VGTSX"
+  },
+  {
+    "num": 85,
+    "start": "2024-11-01",
+    "end": "2025-02-28",
+    "trade_date": "2024-10-31",
+    "ticker": "VFINX"
+  },
+  {
+    "num": 86,
+    "start": "2025-03-01",
+    "end": "2025-03-31",
+    "trade_date": "2025-02-28",
+    "ticker": "VGTSX"
+  },
+  {
+    "num": 87,
+    "start": "2025-04-01",
+    "end": "2025-04-30",
+    "trade_date": "2025-03-31",
+    "ticker": "VFITX"
+  },
+  {
+    "num": 88,
+    "start": "2025-05-01",
+    "end": "2025-07-31",
+    "trade_date": "2025-04-30",
+    "ticker": "VGTSX"
+  },
+  {
+    "num": 89,
+    "start": "2025-08-01",
+    "end": "2025-08-31",
+    "trade_date": "2025-07-31",
+    "ticker": "VFINX"
+  },
+  {
+    "num": 90,
+    "start": "2025-09-01",
+    "end": "2025-09-30",
+    "trade_date": "2025-08-29",
+    "ticker": "VGTSX"
+  },
+  {
+    "num": 91,
+    "start": "2025-10-01",
+    "end": "2025-12-31",
+    "trade_date": "2025-09-30",
+    "ticker": "VFINX"
+  },
+  {
+    "num": 92,
+    "start": "2026-01-01",
+    "end": "2026-03-31",
+    "trade_date": "2025-12-31",
+    "ticker": "VGTSX"
+  },
+  {
+    "num": 93,
+    "start": "2026-04-01",
+    "end": "2026-04-30",
+    "trade_date": "2026-03-31",
+    "ticker": "VFITX"
+  },
+  {
+    "num": 94,
+    "start": "2026-05-01",
+    "end": "2026-05-31",
+    "trade_date": "2026-04-30",
+    "ticker": "VGTSX"
+  },
+  {
+    "num": 95,
+    "start": "2026-06-01",
+    "end": "2026-06-30",
+    "trade_date": "2026-05-29",
+    "ticker": "VFINX"
+  },
+  {
+    "num": 96,
+    "start": "2026-07-01",
+    "end": "2026-07-31",
+    "trade_date": "2026-06-30",
+    "ticker": "VGTSX"
+  }
+]
