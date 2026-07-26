@@ -221,7 +221,7 @@ class TestBuildSignal:
         assert result.signal == "VGIT"
 
     def test_now_mode_anchors_on_the_latest_bar(self):
-        """--now prices the signal at the July 10 bar, not the June 30 close."""
+        """--now prices the signal at the July 10 bar against month-end bases."""
         history_patch, rates_patch = self._patched(
             [100.0, 101.0, 102.0, 103.0, 104.0, 105.0, 110.0], [50.0] * 7
         )
@@ -229,20 +229,24 @@ class TestBuildSignal:
             result = build_signal(TODAY, now=True)
 
         assert result.as_of == date(2026, 7, 10)
-        # No bar on June 10, so the 1-month leg falls back to the May 29 close.
-        assert result.us_returns[1] == pytest.approx(110.0 / 105.0 - 1)
+        assert result.us_returns[3] == pytest.approx(110.0 / 104.0 - 1)  # Apr 30
 
     def test_now_mode_risk_free_windows_follow_the_now_anchor(self):
-        """The rf windows are shifted from July 10, not from a month end."""
-        # Only the June 10 observation may feed the 1-month window.
+        """The rf windows follow the anchor bar's month, not today's month.
+
+        Run on August 1 with the latest bar on July 10, the anchor month is
+        July, whose 1-month window earns the rate set at the end of June.
+        Anchoring on `today` instead would read the (zero) July 31 rate.
+        """
         rates = [(d, 0.0) for d in [date(2025, 11, 28)] + _MONTH_ENDS[:-1]]
-        rates += [(date(2026, 6, 10), 0.12), (date(2026, 6, 30), 0.0)]
+        rates += [(date(2026, 6, 30), 0.12), (date(2026, 7, 31), 0.0)]
         history_patch, rates_patch = self._patched(
             [100.0] * 7, [50.0] * 7, rates=sorted(rates)
         )
         with history_patch, rates_patch:
-            result = build_signal(TODAY, now=True)
+            result = build_signal(date(2026, 8, 1), now=True)
 
+        assert result.as_of == date(2026, 7, 10)
         assert result.rf_returns[1] == pytest.approx(0.01)
 
     def test_now_mode_still_fetches_once_per_symbol(self):

@@ -12,7 +12,6 @@ from dm.signals import (
     LOOKBACKS,
     SignalResult,
     accumulate_rf_returns,
-    accumulate_rf_returns_now,
     anchor_latest,
     anchor_month_end,
     compute_signal,
@@ -34,8 +33,9 @@ def build_signal(today: date, now: bool = False) -> SignalResult:
     """Fetch prices and T-bill rates, then evaluate the dual-momentum rule.
 
     One price-history request per equity (two TwelveData credits per run); the
-    1/3/6-month lookbacks are resolved locally from month-end closes — or, with
-    `now`, from the closes 1/3/6 calendar months before the latest close.
+    1/3/6-month lookbacks are resolved locally from month-end closes. With
+    `now`, the anchor is the latest close instead of the last completed month
+    end, measured against the same prior-month-end bases.
     """
     history_start = today - relativedelta(months=_HISTORY_MONTHS)
     us_bars = get_price_history(US_TICKER, history_start, today)
@@ -50,8 +50,7 @@ def build_signal(today: date, now: bool = False) -> SignalResult:
     anchor_date = min(us_anchor, intl_anchor)
 
     rates = get_tbill_rates(anchor_date - relativedelta(months=_HISTORY_MONTHS), today)
-    accumulate = accumulate_rf_returns_now if now else accumulate_rf_returns
-    rf_returns = accumulate(rates, anchor_date)
+    rf_returns = accumulate_rf_returns(rates, anchor_date)
 
     evaluate = compute_signal_now if now else compute_signal
     return evaluate(

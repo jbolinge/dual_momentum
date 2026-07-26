@@ -93,40 +93,13 @@ def accumulate_rf_returns(
     monthly: dict[int, float] = {}
     for lag in range(1, max(LOOKBACKS) + 1):
         rate_month = _shift_month(anchor_month, lag)
-        rate = _value_on_or_before(observations, _month_end_date(rate_month))
+        rate = _rate_on_or_before(observations, _month_end_date(rate_month))
         if rate is None:
             raise ValueError(
                 f"No risk-free rate observation on or before {_month_label(rate_month)}"
             )
         monthly[lag] = rate / _MONTHS_PER_YEAR
 
-    return _compound_windows(monthly)
-
-
-def accumulate_rf_returns_now(
-    rates: list[tuple[date, float]], anchor: date
-) -> dict[int, float]:
-    """Compound risk-free returns over the 1/3/6-month windows ending at the
-    `anchor` DATE rather than at its month end.
-
-    The month starting at anchor-minus-k-months earns the annual rate observed
-    on or before that shifted date, divided by 12 — the date analogue of the
-    month-end convention where month m earns the rate set at the end of m-1.
-    """
-    observations = sorted(rates, key=lambda item: item[0])
-
-    monthly: dict[int, float] = {}
-    for lag in range(1, max(LOOKBACKS) + 1):
-        shifted = _shift_date(anchor, lag)
-        rate = _value_on_or_before(observations, shifted)
-        if rate is None:
-            raise ValueError(f"No risk-free rate observation on or before {shifted}")
-        monthly[lag] = rate / _MONTHS_PER_YEAR
-
-    return _compound_windows(monthly)
-
-
-def _compound_windows(monthly: dict[int, float]) -> dict[int, float]:
     windows: dict[int, float] = {}
     for months in LOOKBACKS:
         compounded = 1.0
@@ -187,15 +160,26 @@ def compute_signal_now(
     """Evaluate the dual-momentum rule at the latest available close (--now).
 
     Both series are priced at the same date — the earlier of the two latest
-    bars on or before `today` — and each lookback runs from the close on or
-    before the date exactly 1/3/6 calendar months earlier.
+    bars on or before `today` — and each lookback divides that close by the
+    month-end close 1/3/6 months before the anchor's month. Anchored on a
+    month's final close this reproduces the month-end signal exactly; earlier
+    in the month it previews what that signal is shaping up to be.
     """
     us_anchor_date, _ = anchor_latest(us_bars, today)
     intl_anchor_date, _ = anchor_latest(intl_bars, today)
     anchor_date = min(us_anchor_date, intl_anchor_date)
+    anchor_month = (anchor_date.year, anchor_date.month)
 
-    us_returns = _date_lookback_returns(us_bars, anchor_date, us_ticker)
-    intl_returns = _date_lookback_returns(intl_bars, anchor_date, intl_ticker)
+    # The leading series is re-priced at its close on or before the shared date.
+    _, us_close = anchor_latest(us_bars, anchor_date)
+    _, intl_close = anchor_latest(intl_bars, anchor_date)
+
+    us_returns = _returns_from(
+        us_close, _by_month(month_end_closes(us_bars)), anchor_month, us_ticker
+    )
+    intl_returns = _returns_from(
+        intl_close, _by_month(month_end_closes(intl_bars)), anchor_month, intl_ticker
+    )
 
     return _build_result(
         anchor_date,
@@ -259,46 +243,34 @@ def _lookback_returns(
     symbol: str,
 ) -> dict[int, float]:
     """Month-end-to-month-end total returns over each lookback window."""
-
-    def close_for(month: tuple[int, int]) -> float:
-        if month not in by_month:
-            raise ValueError(
-                f"No month-end close for {symbol} in {_month_label(month)}"
-            )
-        return by_month[month][1]
-
-    anchor_close = close_for(anchor_month)
-    return {
-        months: anchor_close / close_for(_shift_month(anchor_month, months)) - 1.0
-        for months in LOOKBACKS
-    }
+    anchor_close = _month_close(by_month, anchor_month, symbol)
+    return _returns_from(anchor_close, by_month, anchor_month, symbol)
 
 
-def _date_lookback_returns(
-    bars: list[tuple[date, float]], anchor: date, symbol: str
+def _returns_from(
+    anchor_close: float,
+    by_month: dict[tuple[int, int], tuple[date, float]],
+    anchor_month: tuple[int, int],
+    symbol: str,
 ) -> dict[int, float]:
-    """Close-to-close total returns from the dates exactly N months before
-    `anchor`, using the most recent close on or before each target date."""
-    observations = sorted(bars, key=lambda bar: bar[0])
-
-    def close_for(target: date) -> float:
-        close = _value_on_or_before(observations, target)
-        if close is None:
-            raise ValueError(f"No {symbol} close on or before {target}")
-        return close
-
-    anchor_close = close_for(anchor)
+    """Returns of `anchor_close` against the month-end closes 1/3/6 months
+    before `anchor_month`."""
     return {
-        months: anchor_close / close_for(_shift_date(anchor, months)) - 1.0
+        months: anchor_close
+        / _month_close(by_month, _shift_month(anchor_month, months), symbol)
+        - 1.0
         for months in LOOKBACKS
     }
 
 
-def _shift_date(day: date, months_back: int) -> date:
-    """The same day-of-month `months_back` months earlier, clamped to the
-    month's last day (July 31 minus one month is June 30)."""
-    year, month_number = _shift_month((day.year, day.month), months_back)
-    return date(year, month_number, min(day.day, monthrange(year, month_number)[1]))
+def _month_close(
+    by_month: dict[tuple[int, int], tuple[date, float]],
+    month: tuple[int, int],
+    symbol: str,
+) -> float:
+    if month not in by_month:
+        raise ValueError(f"No month-end close for {symbol} in {_month_label(month)}")
+    return by_month[month][1]
 
 
 def _shift_month(month: tuple[int, int], months_back: int) -> tuple[int, int]:
@@ -322,13 +294,13 @@ def _month_label(month: tuple[int, int]) -> str:
     return f"{month[0]:04d}-{month[1]:02d}"
 
 
-def _value_on_or_before(
+def _rate_on_or_before(
     observations: list[tuple[date, float]], target: date
 ) -> float | None:
-    """Latest value observed on or before `target`, or None if there is none."""
+    """Latest rate observed on or before `target`, or None if there is none."""
     latest: float | None = None
-    for observed, value in observations:
+    for observed, rate in observations:
         if observed > target:
             break
-        latest = value
+        latest = rate
     return latest
