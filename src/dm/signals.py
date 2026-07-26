@@ -112,7 +112,6 @@ def accumulate_rf_returns_now(
     The month starting at anchor-minus-k-months earns the annual rate observed
     on or before that shifted date, divided by 12 — the date analogue of the
     month-end convention where month m earns the rate set at the end of m-1.
-    Anchored exactly on a month end this matches `accumulate_rf_returns`.
     """
     observations = sorted(rates, key=lambda item: item[0])
 

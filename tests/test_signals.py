@@ -515,7 +515,7 @@ class TestAccumulateRfReturnsNow:
         assert rf[6] == pytest.approx(1.01**6 - 1)
 
     def test_matches_month_end_convention_at_a_month_end_anchor(self):
-        """Anchored exactly on a month end, both accumulators agree."""
+        """With a flat rate, a month-end anchor reproduces the month-end windows."""
         # The date-shifted 6-month lag lands on Dec 30, so a November
         # observation is needed where the month-end accumulator reads Dec 31.
         flat = [(date(2025, 11, 28), 0.06)] + self._flat_rates(0.06)
