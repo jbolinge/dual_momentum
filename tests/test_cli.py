@@ -118,7 +118,9 @@ class TestFormatOutput:
         output = format_output(_result())
 
         assert "(month-end close)" in output
-        assert re.search(r"^Signal: VXUS \(hold from 2026-06-30\)", output, re.MULTILINE)
+        assert re.search(
+            r"^Signal: VXUS \(hold from 2026-06-30\)", output, re.MULTILINE
+        )
 
     def test_reports_absolute_momentum_failure(self):
         output = format_output(
@@ -333,7 +335,9 @@ class TestMain:
 
     @patch("dm.cli.get_tbill_rates", return_value=_rates())
     @patch("dm.cli.get_price_history")
-    def test_without_flag_keeps_month_end_anchor(self, mock_history, _mock_rates, capsys):
+    def test_without_flag_keeps_month_end_anchor(
+        self, mock_history, _mock_rates, capsys
+    ):
         mock_history.side_effect = lambda symbol, start, end: _bars(
             [100.0, 101.0, 102.0, 103.0, 104.0, 105.0, 110.0]
             if symbol == US_TICKER

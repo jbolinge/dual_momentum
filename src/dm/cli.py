@@ -1,5 +1,6 @@
 """CLI entry point."""
 
+import argparse
 import sys
 import warnings
 from datetime import date
@@ -11,8 +12,11 @@ from dm.signals import (
     LOOKBACKS,
     SignalResult,
     accumulate_rf_returns,
+    accumulate_rf_returns_now,
+    anchor_latest,
     anchor_month_end,
     compute_signal,
+    compute_signal_now,
 )
 
 US_TICKER = "VOO"
@@ -26,26 +30,31 @@ _HISTORY_MONTHS = 8
 _SEPARATOR = "=" * 46
 
 
-def build_signal(today: date) -> SignalResult:
+def build_signal(today: date, now: bool = False) -> SignalResult:
     """Fetch prices and T-bill rates, then evaluate the dual-momentum rule.
 
     One price-history request per equity (two TwelveData credits per run); the
-    1/3/6-month lookbacks are resolved locally from month-end closes.
+    1/3/6-month lookbacks are resolved locally from month-end closes — or, with
+    `now`, from the closes 1/3/6 calendar months before the latest close.
     """
     history_start = today - relativedelta(months=_HISTORY_MONTHS)
     us_bars = get_price_history(US_TICKER, history_start, today)
     intl_bars = get_price_history(INTL_TICKER, history_start, today)
 
-    # `compute_signal` anchors both funds on the latest month present in BOTH
-    # series, so the risk-free windows have to follow that shared anchor too.
-    us_anchor, _ = anchor_month_end(us_bars, today)
-    intl_anchor, _ = anchor_month_end(intl_bars, today)
+    # The signal engine anchors both funds on the latest month end (or, with
+    # `now`, the latest close) present in BOTH series, so the risk-free windows
+    # have to follow that shared anchor too.
+    find_anchor = anchor_latest if now else anchor_month_end
+    us_anchor, _ = find_anchor(us_bars, today)
+    intl_anchor, _ = find_anchor(intl_bars, today)
     anchor_date = min(us_anchor, intl_anchor)
 
     rates = get_tbill_rates(anchor_date - relativedelta(months=_HISTORY_MONTHS), today)
-    rf_returns = accumulate_rf_returns(rates, anchor_date)
+    accumulate = accumulate_rf_returns_now if now else accumulate_rf_returns
+    rf_returns = accumulate(rates, anchor_date)
 
-    return compute_signal(
+    evaluate = compute_signal_now if now else compute_signal
+    return evaluate(
         us_bars,
         intl_bars,
         rf_returns,
@@ -56,11 +65,12 @@ def build_signal(today: date) -> SignalResult:
     )
 
 
-def format_output(result: SignalResult) -> str:
+def format_output(result: SignalResult, now: bool = False) -> str:
     """Render a signal result as the report printed by `dm`."""
+    anchor_label = "latest close" if now else "month-end close"
     lines = [
         "Dual Momentum Analysis",
-        f"As of: {result.as_of} (month-end close)",
+        f"As of: {result.as_of} ({anchor_label})",
         _SEPARATOR,
         "",
     ]
@@ -101,7 +111,10 @@ def format_output(result: SignalResult) -> str:
             f"{_pct(winner_score).strip()} clears the risk-free "
             f"{_pct(result.rf_score).strip()} -> stay in the market"
         )
-    lines.append(f"Signal: {result.signal} (hold from {result.as_of})")
+    if now:
+        lines.append(f"Signal: {result.signal} (as of {result.as_of})")
+    else:
+        lines.append(f"Signal: {result.signal} (hold from {result.as_of})")
 
     return "\n".join(lines)
 
@@ -132,11 +145,27 @@ def _configure_warnings() -> None:
     warnings.showwarning = showwarning
 
 
-def main(today: date | None = None):
+def _parse_args(argv: list[str] | None) -> argparse.Namespace:
+    parser = argparse.ArgumentParser(
+        prog="dm",
+        description="Print the dual-momentum signal: VOO, VXUS, or VGIT.",
+    )
+    parser.add_argument(
+        "--now",
+        action="store_true",
+        help="evaluate the signal at the latest available close instead of "
+        "the last completed month-end close",
+    )
+    return parser.parse_args(argv)
+
+
+def main(today: date | None = None, argv: list[str] | None = None):
     """Main entry point for the dm CLI."""
     _configure_warnings()
 
-    print(format_output(build_signal(today or date.today())))
+    args = _parse_args(argv)
+    result = build_signal(today or date.today(), now=args.now)
+    print(format_output(result, now=args.now))
 
 
 if __name__ == "__main__":

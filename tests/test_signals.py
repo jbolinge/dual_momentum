@@ -430,6 +430,7 @@ class TestComputeSignal:
 # Daily-ish bars used by the --now tests: month ends Dec 2025 .. Jun 2026 plus
 # a handful of intra-month bars near the date-shifted lookback targets.
 _NOW_BARS = [
+    (date(2025, 12, 24), 99.5),
     (date(2025, 12, 31), 100.0),
     (date(2026, 1, 23), 100.5),
     (date(2026, 1, 30), 101.0),
@@ -468,7 +469,7 @@ class TestAnchorLatest:
 
     def test_raises_when_no_bar_on_or_before_today(self):
         with pytest.raises(ValueError, match="on or before"):
-            anchor_latest(_NOW_BARS, date(2025, 12, 30))
+            anchor_latest(_NOW_BARS, date(2025, 12, 20))
 
     def test_raises_on_empty_bars(self):
         with pytest.raises(ValueError):
@@ -515,7 +516,9 @@ class TestAccumulateRfReturnsNow:
 
     def test_matches_month_end_convention_at_a_month_end_anchor(self):
         """Anchored exactly on a month end, both accumulators agree."""
-        flat = self._flat_rates(0.06)
+        # The date-shifted 6-month lag lands on Dec 30, so a November
+        # observation is needed where the month-end accumulator reads Dec 31.
+        flat = [(date(2025, 11, 28), 0.06)] + self._flat_rates(0.06)
         assert accumulate_rf_returns_now(flat, date(2026, 6, 30)) == pytest.approx(
             accumulate_rf_returns(flat, date(2026, 6, 30))
         )
