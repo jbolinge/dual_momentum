@@ -107,6 +107,19 @@ class TestFormatOutput:
         assert re.search(r"^Absolute momentum:", output, re.MULTILINE)
         assert "VGIT" not in output
 
+    def test_now_mode_labels_the_latest_close(self):
+        output = format_output(_result(), now=True)
+
+        assert "(latest close)" in output
+        assert "(month-end close)" not in output
+        assert re.search(r"^Signal: VXUS \(as of 2026-06-30\)", output, re.MULTILINE)
+
+    def test_month_end_mode_labels_the_month_end_close(self):
+        output = format_output(_result())
+
+        assert "(month-end close)" in output
+        assert re.search(r"^Signal: VXUS \(hold from 2026-06-30\)", output, re.MULTILINE)
+
     def test_reports_absolute_momentum_failure(self):
         output = format_output(
             _result(
@@ -205,6 +218,38 @@ class TestBuildSignal:
         # Flat equities lose to a positive risk-free rate.
         assert result.signal == "VGIT"
 
+    def test_now_mode_anchors_on_the_latest_bar(self):
+        """--now prices the signal at the July 10 bar, not the June 30 close."""
+        history_patch, rates_patch = self._patched(
+            [100.0, 101.0, 102.0, 103.0, 104.0, 105.0, 110.0], [50.0] * 7
+        )
+        with history_patch, rates_patch:
+            result = build_signal(TODAY, now=True)
+
+        assert result.as_of == date(2026, 7, 10)
+        # No bar on June 10, so the 1-month leg falls back to the May 29 close.
+        assert result.us_returns[1] == pytest.approx(110.0 / 105.0 - 1)
+
+    def test_now_mode_risk_free_windows_follow_the_now_anchor(self):
+        """The rf windows are shifted from July 10, not from a month end."""
+        # Only the June 10 observation may feed the 1-month window.
+        rates = [(d, 0.0) for d in [date(2025, 11, 28)] + _MONTH_ENDS[:-1]]
+        rates += [(date(2026, 6, 10), 0.12), (date(2026, 6, 30), 0.0)]
+        history_patch, rates_patch = self._patched(
+            [100.0] * 7, [50.0] * 7, rates=sorted(rates)
+        )
+        with history_patch, rates_patch:
+            result = build_signal(TODAY, now=True)
+
+        assert result.rf_returns[1] == pytest.approx(0.01)
+
+    def test_now_mode_still_fetches_once_per_symbol(self):
+        history_patch, rates_patch = self._patched([100.0] * 7, [50.0] * 7)
+        with history_patch as mock_history, rates_patch:
+            build_signal(TODAY, now=True)
+
+        assert mock_history.call_count == 2
+
     def test_risk_free_windows_use_the_shared_anchor_month(self):
         """If one equity series lags, the rf windows must follow the SHARED anchor.
 
@@ -251,7 +296,7 @@ class TestMain:
             else [50.0] * 7
         )
 
-        main(today=TODAY)
+        main(today=TODAY, argv=[])
 
         output = capsys.readouterr().out
         assert "VOO:" in output
@@ -265,8 +310,36 @@ class TestMain:
     def test_defaults_to_today(self, mock_history, _mock_rates, capsys):
         mock_history.side_effect = lambda symbol, start, end: _bars([100.0] * 7)
 
-        main()
+        main(argv=[])
 
         _symbol, _start, end = mock_history.call_args.args
         assert end == date.today()
         assert "Signal:" in capsys.readouterr().out
+
+    @patch("dm.cli.get_tbill_rates", return_value=_rates())
+    @patch("dm.cli.get_price_history")
+    def test_now_flag_reports_the_latest_close(self, mock_history, _mock_rates, capsys):
+        mock_history.side_effect = lambda symbol, start, end: _bars(
+            [100.0, 101.0, 102.0, 103.0, 104.0, 105.0, 110.0]
+            if symbol == US_TICKER
+            else [50.0] * 7
+        )
+
+        main(today=TODAY, argv=["--now"])
+
+        output = capsys.readouterr().out
+        assert "As of: 2026-07-10 (latest close)" in output
+        assert re.search(r"^Signal: VOO\b", output, re.MULTILINE)
+
+    @patch("dm.cli.get_tbill_rates", return_value=_rates())
+    @patch("dm.cli.get_price_history")
+    def test_without_flag_keeps_month_end_anchor(self, mock_history, _mock_rates, capsys):
+        mock_history.side_effect = lambda symbol, start, end: _bars(
+            [100.0, 101.0, 102.0, 103.0, 104.0, 105.0, 110.0]
+            if symbol == US_TICKER
+            else [50.0] * 7
+        )
+
+        main(today=TODAY, argv=[])
+
+        assert "As of: 2026-06-30 (month-end close)" in capsys.readouterr().out

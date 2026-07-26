@@ -8,8 +8,11 @@ from dm.signals import (
     WEIGHTS,
     SignalResult,
     accumulate_rf_returns,
+    accumulate_rf_returns_now,
+    anchor_latest,
     anchor_month_end,
     compute_signal,
+    compute_signal_now,
     month_end_closes,
     weighted_score,
 )
@@ -422,3 +425,181 @@ class TestComputeSignal:
 
         with pytest.raises(ValueError, match="2025-12"):
             compute_signal(short, short, self.RF_FLAT, date(2026, 7, 15))
+
+
+# Daily-ish bars used by the --now tests: month ends Dec 2025 .. Jun 2026 plus
+# a handful of intra-month bars near the date-shifted lookback targets.
+_NOW_BARS = [
+    (date(2025, 12, 31), 100.0),
+    (date(2026, 1, 23), 100.5),
+    (date(2026, 1, 30), 101.0),
+    (date(2026, 2, 27), 102.0),
+    (date(2026, 3, 31), 103.0),
+    (date(2026, 4, 24), 103.5),
+    (date(2026, 4, 30), 104.0),
+    (date(2026, 5, 29), 105.0),
+    (date(2026, 6, 24), 106.0),
+    (date(2026, 6, 30), 107.0),
+    (date(2026, 7, 24), 112.0),
+]
+
+_NOW_TODAY = date(2026, 7, 26)
+
+
+class TestAnchorLatest:
+    """The --now anchor is simply the latest bar on or before today."""
+
+    def test_picks_latest_bar_on_or_before_today(self):
+        assert anchor_latest(_NOW_BARS, _NOW_TODAY) == (date(2026, 7, 24), 112.0)
+
+    def test_picks_todays_bar_when_present(self):
+        bars = _NOW_BARS + [(date(2026, 7, 26), 113.0)]
+        assert anchor_latest(bars, _NOW_TODAY) == (date(2026, 7, 26), 113.0)
+
+    def test_ignores_bars_after_today(self):
+        bars = _NOW_BARS + [(date(2026, 7, 27), 999.0)]
+        assert anchor_latest(bars, _NOW_TODAY) == (date(2026, 7, 24), 112.0)
+
+    def test_sorts_unordered_input(self):
+        assert anchor_latest(list(reversed(_NOW_BARS)), _NOW_TODAY) == (
+            date(2026, 7, 24),
+            112.0,
+        )
+
+    def test_raises_when_no_bar_on_or_before_today(self):
+        with pytest.raises(ValueError, match="on or before"):
+            anchor_latest(_NOW_BARS, date(2025, 12, 30))
+
+    def test_raises_on_empty_bars(self):
+        with pytest.raises(ValueError):
+            anchor_latest([], _NOW_TODAY)
+
+
+class TestAccumulateRfReturnsNow:
+    """Risk-free windows ending at an arbitrary anchor date.
+
+    The month starting at anchor-minus-k-months earns the rate observed on or
+    before its first day — the date analogue of "month m earns the rate set at
+    the end of month m-1".
+    """
+
+    def _flat_rates(self, annual: float):
+        return [(d, annual) for d in _MONTH_ENDS]
+
+    def test_flat_rate_compounds_over_window(self):
+        rf = accumulate_rf_returns_now(self._flat_rates(0.06), date(2026, 7, 24))
+
+        assert rf[1] == pytest.approx(0.005)
+        assert rf[3] == pytest.approx(1.005**3 - 1)
+        assert rf[6] == pytest.approx(1.005**6 - 1)
+
+    def test_returns_all_three_windows(self):
+        rf = accumulate_rf_returns_now(self._flat_rates(0.04), date(2026, 7, 24))
+        assert set(rf) == {1, 3, 6}
+
+    def test_uses_rate_observed_at_each_shifted_anchor(self):
+        """For a July 24 anchor, month lag k earns the rate seen on July 24 - k."""
+        rates = dict.fromkeys(_MONTH_ENDS, 0.0)
+        rates[date(2026, 6, 24)] = 0.12  # exactly anchor minus one month
+        rates[date(2026, 6, 30)] = 0.0  # later observation must not apply to lag 1
+        rf = accumulate_rf_returns_now(sorted(rates.items()), date(2026, 7, 24))
+
+        assert rf[1] == pytest.approx(0.01)
+
+    def test_falls_back_to_most_recent_prior_observation(self):
+        """A shifted anchor with no observation reuses the latest earlier rate."""
+        rates = [(date(2025, 12, 31), 0.12)]
+        rf = accumulate_rf_returns_now(rates, date(2026, 7, 24))
+
+        assert rf[6] == pytest.approx(1.01**6 - 1)
+
+    def test_matches_month_end_convention_at_a_month_end_anchor(self):
+        """Anchored exactly on a month end, both accumulators agree."""
+        flat = self._flat_rates(0.06)
+        assert accumulate_rf_returns_now(flat, date(2026, 6, 30)) == pytest.approx(
+            accumulate_rf_returns(flat, date(2026, 6, 30))
+        )
+
+    def test_raises_when_history_too_short(self):
+        rates = [(date(2026, 5, 29), 0.05), (date(2026, 6, 30), 0.05)]
+
+        with pytest.raises(ValueError, match="risk-free"):
+            accumulate_rf_returns_now(rates, date(2026, 7, 24))
+
+
+class TestComputeSignalNow:
+    """--now evaluates the rule at the latest close instead of the month end."""
+
+    RF_FLAT = {1: 0.001, 3: 0.003, 6: 0.006}
+
+    def test_anchors_on_latest_bar(self):
+        result = compute_signal_now(
+            _NOW_BARS, [(d, 50.0) for d, _ in _NOW_BARS], self.RF_FLAT, _NOW_TODAY
+        )
+
+        assert isinstance(result, SignalResult)
+        assert result.as_of == date(2026, 7, 24)
+
+    def test_date_shifted_lookback_returns(self):
+        """Returns run from the close on or before anchor-minus-N-months."""
+        result = compute_signal_now(
+            _NOW_BARS, [(d, 50.0) for d, _ in _NOW_BARS], self.RF_FLAT, _NOW_TODAY
+        )
+
+        assert result.us_returns[1] == pytest.approx(112.0 / 106.0 - 1)  # Jun 24
+        assert result.us_returns[3] == pytest.approx(112.0 / 103.5 - 1)  # Apr 24
+        # No bar on Jan 24, so the Jan 23 close is used.
+        assert result.us_returns[6] == pytest.approx(112.0 / 100.5 - 1)
+
+    def test_clamps_lookback_target_to_month_end(self):
+        """A July 31 anchor looks back to June 30, not a nonexistent June 31."""
+        bars = _NOW_BARS + [(date(2026, 7, 31), 114.0)]
+        result = compute_signal_now(
+            bars, [(d, 50.0) for d, _ in bars], self.RF_FLAT, date(2026, 7, 31)
+        )
+
+        assert result.as_of == date(2026, 7, 31)
+        assert result.us_returns[1] == pytest.approx(114.0 / 107.0 - 1)
+
+    def test_anchors_both_series_on_the_same_date(self):
+        """If one series lags, both are priced at the shared latest date."""
+        intl = [(d, 50.0) for d, _ in _NOW_BARS if d <= date(2026, 6, 30)]
+        result = compute_signal_now(_NOW_BARS, intl, self.RF_FLAT, _NOW_TODAY)
+
+        assert result.as_of == date(2026, 6, 30)
+        assert result.us_returns[1] == pytest.approx(107.0 / 105.0 - 1)  # May 29
+
+    def test_applies_dual_momentum_decision_rule(self):
+        flat_us = [(d, 100.0) for d, _ in _NOW_BARS]
+        rising_intl = [(d, value / 2) for d, value in _NOW_BARS]
+        result = compute_signal_now(flat_us, rising_intl, self.RF_FLAT, _NOW_TODAY)
+
+        assert result.relative_winner == "VXUS"
+        assert result.signal == "VXUS"
+
+    def test_absolute_momentum_sends_signal_to_bond_fund(self):
+        falling = [(d, 200.0 - value) for d, value in _NOW_BARS]
+        flat_intl = [(d, 50.0 - 0.01 * index) for index, (d, _) in enumerate(_NOW_BARS)]
+        result = compute_signal_now(falling, flat_intl, self.RF_FLAT, _NOW_TODAY)
+
+        assert result.signal == "VGIT"
+
+    def test_custom_tickers(self):
+        result = compute_signal_now(
+            _NOW_BARS,
+            [(d, 50.0) for d, _ in _NOW_BARS],
+            self.RF_FLAT,
+            _NOW_TODAY,
+            us_ticker="VFINX",
+            intl_ticker="VGTSX",
+            bond_ticker="VFITX",
+        )
+
+        assert result.relative_winner == "VFINX"
+        assert result.signal == "VFINX"
+
+    def test_raises_when_history_too_short(self):
+        short = [bar for bar in _NOW_BARS if bar[0] >= date(2026, 3, 1)]
+
+        with pytest.raises(ValueError, match="on or before"):
+            compute_signal_now(short, short, self.RF_FLAT, _NOW_TODAY)
