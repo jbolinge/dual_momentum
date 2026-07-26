@@ -15,6 +15,9 @@ uv sync
 # Run the CLI
 uv run dm
 
+# Preview the signal at the latest close instead of the last month end
+uv run dm --now
+
 # Run unit tests only (fast, no external API calls)
 uv run pytest -m "not integration"
 
@@ -55,6 +58,7 @@ tests/
 - **Decision rule**: Relative momentum picks the higher-scoring equity fund; absolute momentum swaps into VGIT only when that winner's score is strictly below the risk-free score
 - **Tiebreakers**: Equal equity scores prefer VOO; a winner tied with the risk-free score stays in equities
 - **Missing data handling**: If no observation exists for a target date, use the most recent data prior to that date
+- **`--now` preview mode**: Anchors on the latest close on or before today (shared between both equity series) instead of the last completed month end. Lookbacks divide that close by the month-end closes 1/3/6 months before the anchor's month, and the risk-free windows follow the anchor's month under the standard convention — so a `--now` run on a month's final close reproduces the default signal exactly. This is an intra-month preview; PV parity (and the backtest) is defined only on the default month-end mode
 
 ## Environment
 

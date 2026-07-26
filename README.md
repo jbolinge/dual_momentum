@@ -68,6 +68,24 @@ The `Signal:` line is stable and greppable:
 uv run dm | grep '^Signal:'
 ```
 
+### `--now`: an intra-month preview
+
+```bash
+uv run dm --now
+```
+
+Instead of anchoring on the last completed month end, `--now` evaluates the
+rule at the **latest available close** (the header reads `latest close`).
+Each lookback divides that close by the month-end closes 1, 3, and 6 months
+before the anchor's month, and the risk-free windows follow the anchor's month
+under the standard convention — so when the anchor is a month's final close,
+`--now` reproduces the default month-end signal exactly, and earlier in the
+month it shows what that signal is shaping up to be.
+
+This is a *preview*, not the traded signal: the PV-parity methodology (and the
+backtest that validates it) is defined on completed month ends, so use the
+default mode for actual month-end rebalancing decisions.
+
 ## Configuration
 
 Create a `.env` file with your API keys:

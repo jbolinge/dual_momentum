@@ -67,6 +67,16 @@ def anchor_month_end(bars: list[tuple[date, float]], today: date) -> tuple[date,
     return candidates[-1]
 
 
+def anchor_latest(bars: list[tuple[date, float]], today: date) -> tuple[date, float]:
+    """Return the latest bar on or before `today` (the --now anchor)."""
+    candidates = [
+        bar for bar in sorted(bars, key=lambda bar: bar[0]) if bar[0] <= today
+    ]
+    if not candidates:
+        raise ValueError(f"No bars on or before {today}")
+    return candidates[-1]
+
+
 def accumulate_rf_returns(
     rates: list[tuple[date, float]], anchor: date
 ) -> dict[int, float]:
@@ -127,6 +137,71 @@ def compute_signal(
     intl_returns = _lookback_returns(intl_by_month, anchor_month, intl_ticker)
     as_of = us_by_month[anchor_month][0]
 
+    return _build_result(
+        as_of,
+        us_returns,
+        intl_returns,
+        rf_window_returns,
+        us_ticker,
+        intl_ticker,
+        bond_ticker,
+    )
+
+
+def compute_signal_now(
+    us_bars: list[tuple[date, float]],
+    intl_bars: list[tuple[date, float]],
+    rf_window_returns: dict[int, float],
+    today: date,
+    us_ticker: str = "VOO",
+    intl_ticker: str = "VXUS",
+    bond_ticker: str = "VGIT",
+) -> SignalResult:
+    """Evaluate the dual-momentum rule at the latest available close (--now).
+
+    Both series are priced at the same date — the earlier of the two latest
+    bars on or before `today` — and each lookback divides that close by the
+    month-end close 1/3/6 months before the anchor's month. Anchored on a
+    month's final close this reproduces the month-end signal exactly; earlier
+    in the month it previews what that signal is shaping up to be.
+    """
+    us_anchor_date, _ = anchor_latest(us_bars, today)
+    intl_anchor_date, _ = anchor_latest(intl_bars, today)
+    anchor_date = min(us_anchor_date, intl_anchor_date)
+    anchor_month = (anchor_date.year, anchor_date.month)
+
+    # The leading series is re-priced at its close on or before the shared date.
+    _, us_close = anchor_latest(us_bars, anchor_date)
+    _, intl_close = anchor_latest(intl_bars, anchor_date)
+
+    us_returns = _returns_from(
+        us_close, _by_month(month_end_closes(us_bars)), anchor_month, us_ticker
+    )
+    intl_returns = _returns_from(
+        intl_close, _by_month(month_end_closes(intl_bars)), anchor_month, intl_ticker
+    )
+
+    return _build_result(
+        anchor_date,
+        us_returns,
+        intl_returns,
+        rf_window_returns,
+        us_ticker,
+        intl_ticker,
+        bond_ticker,
+    )
+
+
+def _build_result(
+    as_of: date,
+    us_returns: dict[int, float],
+    intl_returns: dict[int, float],
+    rf_window_returns: dict[int, float],
+    us_ticker: str,
+    intl_ticker: str,
+    bond_ticker: str,
+) -> SignalResult:
+    """Score the returns and apply the relative/absolute momentum rules."""
     us_score = weighted_score(us_returns)
     intl_score = weighted_score(intl_returns)
     rf_score = weighted_score(rf_window_returns)
@@ -168,19 +243,34 @@ def _lookback_returns(
     symbol: str,
 ) -> dict[int, float]:
     """Month-end-to-month-end total returns over each lookback window."""
+    anchor_close = _month_close(by_month, anchor_month, symbol)
+    return _returns_from(anchor_close, by_month, anchor_month, symbol)
 
-    def close_for(month: tuple[int, int]) -> float:
-        if month not in by_month:
-            raise ValueError(
-                f"No month-end close for {symbol} in {_month_label(month)}"
-            )
-        return by_month[month][1]
 
-    anchor_close = close_for(anchor_month)
+def _returns_from(
+    anchor_close: float,
+    by_month: dict[tuple[int, int], tuple[date, float]],
+    anchor_month: tuple[int, int],
+    symbol: str,
+) -> dict[int, float]:
+    """Returns of `anchor_close` against the month-end closes 1/3/6 months
+    before `anchor_month`."""
     return {
-        months: anchor_close / close_for(_shift_month(anchor_month, months)) - 1.0
+        months: anchor_close
+        / _month_close(by_month, _shift_month(anchor_month, months), symbol)
+        - 1.0
         for months in LOOKBACKS
     }
+
+
+def _month_close(
+    by_month: dict[tuple[int, int], tuple[date, float]],
+    month: tuple[int, int],
+    symbol: str,
+) -> float:
+    if month not in by_month:
+        raise ValueError(f"No month-end close for {symbol} in {_month_label(month)}")
+    return by_month[month][1]
 
 
 def _shift_month(month: tuple[int, int], months_back: int) -> tuple[int, int]:
