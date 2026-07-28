@@ -86,6 +86,21 @@ This is a *preview*, not the traded signal: the PV-parity methodology (and the
 backtest that validates it) is defined on completed month ends, so use the
 default mode for actual month-end rebalancing decisions.
 
+Two caveats when reading a mid-month preview:
+
+- **Don't expect the returns to match Portfolio Visualizer's live signals
+  page.** PV's documented methodology is month-end only ("monthly changes are
+  based on the end-of-month adjusted close price"); how its paid
+  forward-signals view derives intra-month returns is unpublished and does not
+  use these month-end bases. Mid-month, the per-period returns and scores will
+  therefore differ from PV's — often by whole percentage points — even when
+  both agree on the signal. Parity is exact only at a month's final close.
+- **Early in a month, the risk-free leg runs ahead of the equities.** The
+  risk-free windows always cover whole calendar months, while the equity
+  lookbacks cover only the elapsed part of the anchor month. In the first days
+  of a month this leans the preview toward VGIT; the gap closes as the month
+  completes and vanishes at the final close.
+
 ## Configuration
 
 Create a `.env` file with your API keys:
