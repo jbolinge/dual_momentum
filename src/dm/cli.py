@@ -12,48 +12,54 @@ from dm.signals import (
     LOOKBACKS,
     SignalResult,
     accumulate_rf_returns,
-    anchor_latest,
     anchor_month_end,
     compute_signal,
-    compute_signal_now,
+    compute_signal_trailing,
 )
 
 US_TICKER = "VOO"
 INTL_TICKER = "VXUS"
 BOND_TICKER = "VGIT"
 
-# The signal anchors on the last completed month end and looks back 6 months,
-# so the fetch window has to reach into the month 7 months before today.
+# Lookbacks reach 6 months behind the anchor (and, in month-end mode, the
+# anchor can sit a month behind today); 8 months covers both with margin.
 _HISTORY_MONTHS = 8
 
 _SEPARATOR = "=" * 46
 
 
-def build_signal(today: date, now: bool = False) -> SignalResult:
+def build_signal(today: date, month_end: bool = False) -> SignalResult:
     """Fetch prices and T-bill rates, then evaluate the dual-momentum rule.
 
     One price-history request per equity (two TwelveData credits per run); the
-    1/3/6-month lookbacks are resolved locally from month-end closes. With
-    `now`, the anchor is the latest close instead of the last completed month
-    end, measured against the same prior-month-end bases.
+    lookbacks are resolved locally. By default the 1/3/6-month windows trail
+    back from the latest close on or before `today`; with `month_end`, they are
+    PV's month-end-to-month-end windows at the last completed month end.
     """
     history_start = today - relativedelta(months=_HISTORY_MONTHS)
     us_bars = get_price_history(US_TICKER, history_start, today)
     intl_bars = get_price_history(INTL_TICKER, history_start, today)
+    rates = get_tbill_rates(history_start, today)
 
-    # The signal engine anchors both funds on the latest month end (or, with
-    # `now`, the latest close) present in BOTH series, so the risk-free windows
-    # have to follow that shared anchor too.
-    find_anchor = anchor_latest if now else anchor_month_end
-    us_anchor, _ = find_anchor(us_bars, today)
-    intl_anchor, _ = find_anchor(intl_bars, today)
-    anchor_date = min(us_anchor, intl_anchor)
+    if not month_end:
+        return compute_signal_trailing(
+            us_bars,
+            intl_bars,
+            rates,
+            today,
+            us_ticker=US_TICKER,
+            intl_ticker=INTL_TICKER,
+            bond_ticker=BOND_TICKER,
+        )
 
-    rates = get_tbill_rates(anchor_date - relativedelta(months=_HISTORY_MONTHS), today)
-    rf_returns = accumulate_rf_returns(rates, anchor_date)
+    # The month-end engine anchors both funds on the latest month end present
+    # in BOTH series, so the risk-free windows have to follow that shared
+    # anchor too.
+    us_anchor, _ = anchor_month_end(us_bars, today)
+    intl_anchor, _ = anchor_month_end(intl_bars, today)
+    rf_returns = accumulate_rf_returns(rates, min(us_anchor, intl_anchor))
 
-    evaluate = compute_signal_now if now else compute_signal
-    return evaluate(
+    return compute_signal(
         us_bars,
         intl_bars,
         rf_returns,
@@ -64,12 +70,16 @@ def build_signal(today: date, now: bool = False) -> SignalResult:
     )
 
 
-def format_output(result: SignalResult, now: bool = False) -> str:
+def format_output(result: SignalResult, month_end: bool = False) -> str:
     """Render a signal result as the report printed by `dm`."""
-    anchor_label = "latest close" if now else "month-end close"
+    anchor_label = "month-end close" if month_end else "latest close, trailing windows"
+    window_starts = ", ".join(
+        f"{months}M {result.window_starts[months]}" for months in LOOKBACKS
+    )
     lines = [
         "Dual Momentum Analysis",
         f"As of: {result.as_of} ({anchor_label})",
+        f"Windows from: {window_starts}",
         _SEPARATOR,
         "",
     ]
@@ -110,10 +120,10 @@ def format_output(result: SignalResult, now: bool = False) -> str:
             f"{_pct(winner_score).strip()} clears the risk-free "
             f"{_pct(result.rf_score).strip()} -> stay in the market"
         )
-    if now:
-        lines.append(f"Signal: {result.signal} (as of {result.as_of})")
-    else:
+    if month_end:
         lines.append(f"Signal: {result.signal} (hold from {result.as_of})")
+    else:
+        lines.append(f"Signal: {result.signal} (as of {result.as_of})")
 
     return "\n".join(lines)
 
@@ -150,10 +160,11 @@ def _parse_args(argv: list[str] | None) -> argparse.Namespace:
         description="Print the dual-momentum signal: VOO, VXUS, or VGIT.",
     )
     parser.add_argument(
-        "--now",
+        "--month-end",
         action="store_true",
-        help="evaluate the signal at the latest available close instead of "
-        "the last completed month-end close",
+        help="evaluate Portfolio Visualizer's month-end signal (windows ending "
+        "at the last completed month-end close) instead of trailing windows "
+        "ending at the latest close",
     )
     return parser.parse_args(argv)
 
@@ -163,8 +174,8 @@ def main(today: date | None = None, argv: list[str] | None = None):
     _configure_warnings()
 
     args = _parse_args(argv)
-    result = build_signal(today or date.today(), now=args.now)
-    print(format_output(result, now=args.now))
+    result = build_signal(today or date.today(), month_end=args.month_end)
+    print(format_output(result, month_end=args.month_end))
 
 
 if __name__ == "__main__":
