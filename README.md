@@ -82,10 +82,9 @@ Evaluates the rule only at the last completed month-end close, with
 month-end-to-month-end windows (header: `month-end close`; signal line:
 `hold from`). This is Portfolio Visualizer's own convention and the mode the
 `backtest/` suite validates against PV's trade history. A mid-month run reports
-the prior month end, so a run on October 6 reports September 30. Run it on or
-after the 1st: on a month's last calendar day before that day's close is
-posted, it would anchor on the second-to-last trading day (about a 3%
-historical signal-flip risk).
+the prior month end, so a run on October 6 reports September 30. On a month's
+last calendar day it reports that month only after 4:15pm ET, once the final
+close has posted.
 
 The default trailing mode is a weekly-run extension of that methodology: same
 weights, same risk-free construction, same decision rule, but measured on
