@@ -17,7 +17,7 @@ The specific implementation reproduces [Portfolio Visualizer](https://www.portfo
 
 The model is always 100% in exactly one of VOO, VXUS, or VGIT. The rules-based approach removes emotional decision-making from the investment process, replacing gut feelings with systematic, repeatable analysis.
 
-**Month ends.** When the anchor is a month's final close (the month has ended, or no weekdays remain in it), the windows snap to prior month ends: a September 30 anchor measures from August 31, June 30, and March 31. On those days the result is exactly Portfolio Visualizer's month-end signal (see `--month-end` below).
+**Month ends.** When the anchor is a month's final close (the month has ended, or only weekends and holidays remain in it), the windows snap to prior month ends: a September 30 anchor measures from August 31, June 30, and March 31. On those days the result is exactly Portfolio Visualizer's month-end signal (see `--month-end` below).
 
 ## Installation
 
