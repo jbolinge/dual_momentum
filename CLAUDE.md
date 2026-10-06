@@ -52,7 +52,7 @@ tests/
 
 - **PV parity**: The methodology mirrors Portfolio Visualizer's Dual Momentum Model as documented in `Model_Backtest_20260725202812.pdf`; `backtest/` validates the month-end engine (`compute_signal` + `accumulate_rf_returns`) against PV's own trade history. Parity is defined on month ends only
 - **Trailing windows (default)**: Anchor = the earlier of the two series' latest closes on or before today. An N-month window starts on the same calendar day N months before the anchor (`relativedelta`, clamped to shorter months); its base is the latest close on or before that date, and a base more than 10 days stale raises instead of stretching the window. Mid-month results will not match PV's published numbers — that is expected
-- **Month-end snapping**: When the anchor is its month's final close (`is_month_end_anchor`: the month has ended by `today`, or no weekdays remain after the anchor), window starts snap to prior months' last calendar days (Sep 30 → Aug 31, not Aug 30). This makes the trailing engine reproduce `compute_signal` exactly on month-end closes; a test enforces it
+- **Month-end snapping**: When the anchor is its month's final close (`is_month_end_anchor`: no series has a later bar that month, and either the month has ended by `today` or no weekdays remain after the anchor), window starts snap to prior months' last calendar days (Sep 30 → Aug 31, not Aug 30). This makes the trailing engine reproduce `compute_signal` exactly on month-end closes; a test enforces it
 - **`--month-end` mode**: Signals evaluated only at end-of-month closes and held the following month. Month M becomes eligible once its last calendar day arrives, so a mid-July run anchors on June 30. Running on a month's last calendar day before the close is posted would anchor on the second-to-last trading day (~3% historical signal-flip risk)
 - **Total return required**: Momentum is computed on dividend-adjusted closes. TwelveData defaults to `adjust=splits`, which understates 6-month returns by tens of basis points, so `adjust=all` is mandatory
 - **Weighting**: 1, 3, and 6 month lookbacks weighted 33% / 33% / 34% (PV's weights), not equal thirds
@@ -60,7 +60,9 @@ tests/
 - **Decision rule**: Relative momentum picks the higher-scoring equity fund; absolute momentum swaps into VGIT only when that winner's score is strictly below the risk-free score
 - **Tiebreakers**: Equal equity scores prefer VOO; a winner tied with the risk-free score stays in equities
 - **Missing data handling**: If no observation exists for a target date, use the most recent data prior to that date
-- **Intraday runs**: A run during market hours may price the anchor at the provider's in-progress bar; returns are final only after the close is posted
+- **Run date**: `main` dates a run with `session_date` — today after 4:15pm America/New_York, else yesterday — so a provider's live in-progress bar is never priced as a close. Tests pass `today` explicitly
+- **TwelveData `end_date` is exclusive**: `data.py` requests `end_date + 1 day` and filters to `[start, end]`; yfinance's `end` is exclusive too and gets the same +1 day
+- **Staleness guards**: the trailing anchor must be within 10 days of the run date, and each base close within 10 days of its window start; otherwise `ValueError`
 
 ## Environment
 

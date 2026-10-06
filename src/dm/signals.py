@@ -33,9 +33,9 @@ LOOKBACKS: tuple[int, ...] = (1, 3, 6)
 
 _MONTHS_PER_YEAR = 12
 
-# A trailing window's base close may predate its start date (weekends,
-# holidays), but a longer gap means missing data rather than a market closure.
-_MAX_BASE_STALENESS = timedelta(days=10)
+# A close may predate the date it stands in for (weekends, holidays), but a
+# longer gap means missing data rather than a market closure.
+_MAX_STALENESS = timedelta(days=10)
 
 
 @dataclass(frozen=True)
@@ -95,13 +95,21 @@ def anchor_latest(bars: list[tuple[date, float]], today: date) -> tuple[date, fl
     return candidates[-1]
 
 
-def is_month_end_anchor(anchor: date, today: date) -> bool:
+def is_month_end_anchor(
+    anchor: date, today: date, *bar_series: list[tuple[date, float]]
+) -> bool:
     """Whether `anchor` is the final close of its month.
 
-    True once the month has ended by `today`, or when no weekday remains in the
-    month after `anchor` (e.g. a Friday close before a weekend month end).
+    Never when any of `bar_series` has a bar later in the anchor's month (a
+    lagging series). Otherwise true once the month has ended by `today`, or
+    when no weekday remains in the month after `anchor` (e.g. a Friday close
+    before a weekend month end).
     """
     month_end = _last_calendar_day(anchor)
+    if any(
+        anchor < bar_date <= month_end for bars in bar_series for bar_date, _ in bars
+    ):
+        return False
     if month_end <= today:
         return True
     remaining = (anchor + timedelta(days=offset) for offset in range(1, 7))
@@ -224,7 +232,8 @@ def compute_signal_trailing(
     """Evaluate the dual-momentum rule on trailing windows ending today.
 
     Both series are priced at the same date — the earlier of the two latest
-    bars on or before `today`. Each N-month return divides that close by the
+    bars on or before `today` (which must be within 10 days of `today`). Each
+    N-month return divides that close by the
     latest close on or before the date N months earlier, and the risk-free leg
     compounds T-bill returns over the same windows. When the anchor is a
     month's final close the windows snap to prior month ends, reproducing
@@ -233,9 +242,14 @@ def compute_signal_trailing(
     us_anchor_date, _ = anchor_latest(us_bars, today)
     intl_anchor_date, _ = anchor_latest(intl_bars, today)
     anchor_date = min(us_anchor_date, intl_anchor_date)
+    if today - anchor_date > _MAX_STALENESS:
+        raise ValueError(
+            f"Latest shared close {anchor_date} is stale for a run on {today}"
+        )
 
     step_dates = lookback_dates(
-        anchor_date, month_end=is_month_end_anchor(anchor_date, today)
+        anchor_date,
+        month_end=is_month_end_anchor(anchor_date, today, us_bars, intl_bars),
     )
     window_starts = {months: step_dates[months] for months in LOOKBACKS}
 
@@ -334,7 +348,7 @@ def _trailing_returns(
                 f"No {symbol} close on or before {start} for the "
                 f"{months}-month lookback"
             ) from None
-        if start - base_date > _MAX_BASE_STALENESS:
+        if start - base_date > _MAX_STALENESS:
             raise ValueError(
                 f"{symbol} {months}-month base close is stale: latest close on "
                 f"or before {start} is {base_date}"

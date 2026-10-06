@@ -95,12 +95,16 @@ claim covers the month-end mode.
 
 ### Caveats
 
-- **Run after the close.** A run during market hours may price the anchor at
-  an in-progress (partial) bar from the data provider. The trailing returns
-  are only final once the day's close is posted.
-- **Data gaps fail loudly.** If the latest close on or before a window's start
-  date is more than 10 days old, the run raises an error rather than silently
-  stretching the window.
+- **Today's close counts only once it has posted.** Before 4:15pm New York
+  time the run is dated the previous day, so a live mid-session quote is never
+  mistaken for a close. Run after 4:15pm ET to include today's close.
+- **Data gaps fail loudly.** If the latest shared close, or the latest close on
+  or before a window's start date, is more than 10 days old, the run raises an
+  error rather than silently reporting stale or stretched windows.
+- **Lagging data never snaps.** The month-end snapping applies only when no
+  series has a later bar in the anchor's month, so one fund missing the
+  month's final bar yields plain trailing windows, not a mislabeled month-end
+  signal.
 
 ## Configuration
 

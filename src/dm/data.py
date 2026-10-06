@@ -52,7 +52,9 @@ def _get_price_history_twelvedata(
             "symbol": symbol,
             "interval": "1day",
             "start_date": start_date.isoformat(),
-            "end_date": end_date.isoformat(),
+            # TwelveData's end_date is exclusive; ask for the next day so
+            # end_date's own bar is included.
+            "end_date": (end_date + timedelta(days=1)).isoformat(),
             "adjust": "all",
             "apikey": api_key,
         },
@@ -70,7 +72,8 @@ def _get_price_history_twelvedata(
     if not values:
         raise ValueError(f"No price data found for {symbol}")
 
-    return [(date.fromisoformat(v["datetime"][:10]), float(v["close"])) for v in values]
+    bars = [(date.fromisoformat(v["datetime"][:10]), float(v["close"])) for v in values]
+    return [bar for bar in bars if start_date <= bar[0] <= end_date]
 
 
 def _get_price_history_yfinance(

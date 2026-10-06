@@ -3,7 +3,8 @@
 import argparse
 import sys
 import warnings
-from datetime import date
+from datetime import date, datetime, time, timedelta
+from zoneinfo import ZoneInfo
 
 from dateutil.relativedelta import relativedelta
 
@@ -26,6 +27,23 @@ BOND_TICKER = "VGIT"
 _HISTORY_MONTHS = 8
 
 _SEPARATOR = "=" * 46
+
+# US equities close at 4:00pm New York time; allow a margin for the close to
+# reach the data providers.
+_MARKET_TZ = ZoneInfo("America/New_York")
+_CLOSE_POSTED = time(16, 15)
+
+
+def session_date(now: datetime) -> date:
+    """The latest date whose close has posted as of the aware datetime `now`.
+
+    Before 4:15pm New York time today's bar is a live quote, so the run is
+    dated yesterday; bars dated after the run date are ignored downstream.
+    """
+    market_now = now.astimezone(_MARKET_TZ)
+    if market_now.time() < _CLOSE_POSTED:
+        return market_now.date() - timedelta(days=1)
+    return market_now.date()
 
 
 def build_signal(today: date, month_end: bool = False) -> SignalResult:
@@ -174,7 +192,8 @@ def main(today: date | None = None, argv: list[str] | None = None):
     _configure_warnings()
 
     args = _parse_args(argv)
-    result = build_signal(today or date.today(), month_end=args.month_end)
+    run_date = today or session_date(datetime.now(_MARKET_TZ))
+    result = build_signal(run_date, month_end=args.month_end)
     print(format_output(result, month_end=args.month_end))
 
 
