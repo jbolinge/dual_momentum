@@ -182,7 +182,26 @@ class TestGetPriceHistoryTwelveData:
         assert params["interval"] == "1day"
         assert params["apikey"] == "fake_key"
         assert params["start_date"] == "2024-01-10"
-        assert params["end_date"] == "2024-06-10"
+        # TwelveData's end_date is exclusive; ask for the day after so the
+        # caller's end date is included.
+        assert params["end_date"] == "2024-06-11"
+
+    @patch("dm.data.requests.get")
+    @patch("dm.data.os.getenv")
+    def test_drops_bars_after_the_end_date(self, mock_getenv, mock_get):
+        mock_getenv.return_value = "fake_key"
+        mock_get.return_value = _td_response(
+            values=[
+                {"datetime": "2024-06-11", "close": "999.00"},
+                {"datetime": "2024-06-10", "close": "500.00"},
+            ],
+        )
+
+        bars = _get_price_history_twelvedata(
+            "VOO", date(2024, 1, 10), date(2024, 6, 10)
+        )
+
+        assert bars == [(date(2024, 6, 10), 500.0)]
 
     @patch("dm.data.requests.get")
     @patch("dm.data.os.getenv")

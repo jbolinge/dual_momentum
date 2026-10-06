@@ -1,7 +1,8 @@
 """Tests for CLI orchestration and output."""
 
 import re
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta
+from zoneinfo import ZoneInfo
 from unittest.mock import patch
 
 import pytest
@@ -13,6 +14,7 @@ from dm.cli import (
     build_signal,
     format_output,
     main,
+    session_date,
 )
 from dm.signals import SignalResult
 
@@ -86,6 +88,42 @@ def _result(
             6: date(2025, 12, 31),
         },
     )
+
+
+_ET = ZoneInfo("America/New_York")
+
+
+class TestSessionDate:
+    """The default run date is the latest session whose close has posted."""
+
+    def test_after_the_close_uses_today(self):
+        assert session_date(datetime(2026, 10, 6, 17, 0, tzinfo=_ET)) == date(
+            2026, 10, 6
+        )
+
+    def test_during_the_session_uses_yesterday(self):
+        """A mid-session bar is a live quote, not a close."""
+        assert session_date(datetime(2026, 10, 6, 11, 0, tzinfo=_ET)) == date(
+            2026, 10, 5
+        )
+
+    def test_before_the_close_is_posted_uses_yesterday(self):
+        assert session_date(datetime(2026, 10, 6, 16, 5, tzinfo=_ET)) == date(
+            2026, 10, 5
+        )
+
+    def test_converts_other_timezones_to_new_york(self):
+        """3:30pm Central is 4:30pm Eastern: the close has posted."""
+        central = ZoneInfo("America/Chicago")
+        assert session_date(datetime(2026, 10, 6, 15, 30, tzinfo=central)) == date(
+            2026, 10, 6
+        )
+
+    def test_month_end_mid_session_is_not_a_month_end_close(self):
+        """Sep 30 at 11am ET: September's final close does not exist yet."""
+        assert session_date(datetime(2026, 9, 30, 11, 0, tzinfo=_ET)) == date(
+            2026, 9, 29
+        )
 
 
 class TestTickers:
@@ -409,10 +447,11 @@ class TestMain:
     def test_defaults_to_today(self, mock_history, _mock_rates, capsys):
         mock_history.side_effect = lambda symbol, start, end: _daily_bars(start, end)
 
-        main(argv=[])
+        with patch("dm.cli.session_date", return_value=date(2026, 10, 5)):
+            main(argv=[])
 
         _symbol, _start, end = mock_history.call_args.args
-        assert end == date.today()
+        assert end == date(2026, 10, 5)
         assert "Signal:" in capsys.readouterr().out
 
     @patch("dm.cli.get_tbill_rates", return_value=_daily_rates())

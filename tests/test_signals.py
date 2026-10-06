@@ -555,9 +555,18 @@ class TestIsMonthEndAnchor:
     def test_earlier_weekday_is_not_a_month_end(self):
         assert not is_month_end_anchor(date(2026, 10, 29), date(2026, 10, 30))
 
-    def test_stale_bar_in_a_completed_month(self):
-        """A month that has ended makes its latest bar the month end."""
-        assert is_month_end_anchor(date(2026, 10, 29), date(2026, 11, 2))
+    def test_holiday_month_end_once_the_month_is_over(self):
+        """Good Friday 2024-03-29: Thu Mar 28 was March's final close."""
+        assert is_month_end_anchor(date(2024, 3, 28), date(2024, 4, 1))
+
+    def test_not_a_month_end_when_a_later_bar_exists_that_month(self):
+        """Another series trading after the anchor proves the month went on."""
+        later = [(date(2026, 9, 30), 1.0)]
+        assert not is_month_end_anchor(date(2026, 9, 29), date(2026, 10, 1), later)
+
+    def test_later_bars_in_other_months_do_not_count(self):
+        later = [(date(2026, 10, 1), 1.0)]
+        assert is_month_end_anchor(date(2026, 9, 30), date(2026, 10, 1), later)
 
 
 class TestTrailingRfReturns:
@@ -734,6 +743,27 @@ class TestComputeSignalTrailing:
         assert result.us_returns[6] == pytest.approx(
             anchor / _close_on(us, date(2026, 4, 30)) - 1
         )
+
+    def test_lagging_series_at_month_end_does_not_snap(self):
+        """US has Sep 30, VXUS stops at Sep 29: the shared Sep 29 anchor is not
+        September's final close, so the windows trail from the 29th."""
+        us = [bar for bar in _DAILY_US if bar[0] <= date(2026, 9, 30)]
+        intl = [bar for bar in _DAILY_INTL if bar[0] <= date(2026, 9, 29)]
+        result = compute_signal_trailing(us, intl, self.RATES, date(2026, 10, 1))
+
+        assert result.as_of == date(2026, 9, 29)
+        assert result.window_starts == {
+            1: date(2026, 8, 29),
+            3: date(2026, 6, 29),
+            6: date(2026, 3, 29),
+        }
+
+    def test_raises_on_a_stale_anchor(self):
+        """Prices that stopped weeks ago must not pass for today's signal."""
+        old = [bar for bar in _DAILY_US if bar[0] <= date(2026, 9, 18)]
+
+        with pytest.raises(ValueError, match="stale"):
+            compute_signal_trailing(old, old, self.RATES, _TRAIL_TODAY)
 
     def test_anchors_both_series_on_the_same_date(self):
         """A lagging series pulls both onto its latest close."""
