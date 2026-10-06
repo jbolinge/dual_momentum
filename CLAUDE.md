@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-`dm` is a CLI application that reproduces Portfolio Visualizer's Dual Momentum Model for the user's live tickers. At each month-end close it scores VOO (US) and VXUS (International) on the weighted average of their 1, 3, and 6 month total returns, compares the winner against the 3-month Treasury bill return, and prints the single ticker to hold for the coming month — VOO, VXUS, or VGIT (intermediate treasuries) when equity momentum is below the risk-free rate.
+`dm` is a CLI application built on Portfolio Visualizer's Dual Momentum Model for the user's live tickers. Each run scores VOO (US) and VXUS (International) on the weighted average of their trailing 1, 3, and 6 month total returns as of the latest close, compares the winner against the 3-month Treasury bill return over the same windows, and prints the single ticker to hold — VOO, VXUS, or VGIT (intermediate treasuries) when equity momentum is below the risk-free rate. The user runs it weekly and shifts 25% of the portfolio toward the signal each week, so the default mode must reflect the run date, not the last month end.
 
 ## Commands
 
@@ -15,8 +15,8 @@ uv sync
 # Run the CLI
 uv run dm
 
-# Preview the signal at the latest close instead of the last month end
-uv run dm --now
+# PV's month-end signal (last completed month end, month-end-to-month-end windows)
+uv run dm --month-end
 
 # Run unit tests only (fast, no external API calls)
 uv run pytest -m "not integration"
@@ -37,28 +37,32 @@ uv run pytest tests/test_file.py::test_function_name -v
 src/dm/
 ├── cli.py          # Entry point, fetch orchestration, output formatting
 ├── data.py         # Data fetching (TwelveData primary, yfinance fallback, FRED)
-└── signals.py      # Pure signal engine: month-end anchoring, scores, decision rule
+└── signals.py      # Pure signal engine: trailing/month-end windows, scores, decision rule
 tests/
 └── ...             # Mirror structure of src/dm/
 ```
 
 ### Data Flow
 
-1. `cli.py` fetches ~8 months of daily closes for VOO and VXUS (one request each) plus the DTB3 rate series, then hands them to the signal engine
+1. `cli.py` fetches ~8 months of daily closes for VOO and VXUS (one request each) plus the DTB3 rate series, then hands them to the signal engine (`compute_signal_trailing` by default, `compute_signal` with `--month-end`)
 2. `data.py` fetches dividend-adjusted closes from TwelveData (`adjust=all`), falling back to yfinance (`auto_adjust=True`), and the 3-month T-bill series from FRED (DTB3)
-3. `signals.py` reduces daily bars to month-end closes, anchors on the latest completed month, computes 1/3/6-month total returns, weights them 33/33/34, and applies the dual-momentum rule
+3. `signals.py` anchors on the latest shared close (or, with `--month-end`, the latest completed month end), computes 1/3/6-month total returns, weights them 33/33/34, and applies the dual-momentum rule
 
 ### Key Design Decisions
 
-- **PV parity**: The methodology mirrors Portfolio Visualizer's Dual Momentum Model as documented in `Model_Backtest_20260725202812.pdf`; `backtest/` validates the engine against PV's own trade history
-- **Month-end anchoring**: Signals are evaluated only at end-of-month closes and held the following month. Month M becomes eligible once its last calendar day arrives, so a mid-July run anchors on June 30. Run `dm` on or after the 1st of the month — running on a month's last calendar day before the close is posted would anchor on the second-to-last trading day (~3% historical signal-flip risk)
+- **PV parity**: The methodology mirrors Portfolio Visualizer's Dual Momentum Model as documented in `Model_Backtest_20260725202812.pdf`; `backtest/` validates the month-end engine (`compute_signal` + `accumulate_rf_returns`) against PV's own trade history. Parity is defined on month ends only
+- **Trailing windows (default)**: Anchor = the earlier of the two series' latest closes on or before today. An N-month window starts on the same calendar day N months before the anchor (`relativedelta`, clamped to shorter months); its base is the latest close on or before that date, and a base more than 10 days stale raises instead of stretching the window. Mid-month results will not match PV's published numbers — that is expected
+- **Month-end snapping**: When the anchor is its month's final close (`is_month_end_anchor`: no series has a later bar that month, and either the month has ended by `today` or no weekdays remain after the anchor), window starts snap to prior months' last calendar days (Sep 30 → Aug 31, not Aug 30). This makes the trailing engine reproduce `compute_signal` exactly on month-end closes; a test enforces it
+- **`--month-end` mode**: Signals evaluated only at end-of-month closes and held the following month. Month M becomes eligible once its last calendar day arrives, so a mid-July run anchors on June 30. `session_date` keeps a month's last calendar day from qualifying before 4:15pm ET; without it (e.g. an explicit `today`), a pre-close run on that day would anchor on the second-to-last trading day (~3% historical signal-flip risk)
 - **Total return required**: Momentum is computed on dividend-adjusted closes. TwelveData defaults to `adjust=splits`, which understates 6-month returns by tens of basis points, so `adjust=all` is mandatory
 - **Weighting**: 1, 3, and 6 month lookbacks weighted 33% / 33% / 34% (PV's weights), not equal thirds
-- **Risk-free rate**: FRED DTB3 (3-month T-bill). The return earned in month m uses the annual rate observed at the end of month m-1 divided by 12; window returns compound those monthly returns
+- **Risk-free rate**: FRED DTB3 (3-month T-bill). The window is split into one-month steps matching the equity windows; each step earns the annual rate observed on or before the step's start date divided by 12, and window returns compound the steps (`trailing_rf_returns`). At month ends this is PV's convention: month m earns the rate observed at the end of month m-1
 - **Decision rule**: Relative momentum picks the higher-scoring equity fund; absolute momentum swaps into VGIT only when that winner's score is strictly below the risk-free score
 - **Tiebreakers**: Equal equity scores prefer VOO; a winner tied with the risk-free score stays in equities
 - **Missing data handling**: If no observation exists for a target date, use the most recent data prior to that date
-- **`--now` preview mode**: Anchors on the latest close on or before today (shared between both equity series) instead of the last completed month end. Lookbacks divide that close by the month-end closes 1/3/6 months before the anchor's month, and the risk-free windows follow the anchor's month under the standard convention — so a `--now` run on a month's final close reproduces the default signal exactly. This is an intra-month preview; PV parity (and the backtest) is defined only on the default month-end mode. Mid-month, `--now` returns/scores will NOT match PV's paid forward-signals page (PV's intra-month convention is unpublished and not month-end-based; verified 2026-07 — same signal, different numbers is expected, not a bug), and early in a month the full-month risk-free windows lean the preview toward VGIT until the equity lookbacks catch up
+- **Run date**: `main` dates a run with `session_date` — today after 4:15pm America/New_York, else yesterday — so a provider's live in-progress bar is never priced as a close. Tests pass `today` explicitly
+- **TwelveData `end_date` is exclusive**: `data.py` requests `end_date + 1 day` and filters to `[start, end]`; yfinance's `end` is exclusive too and gets the same +1 day
+- **Staleness guards**: the trailing anchor must be within 10 days of the run date, and each base close within 10 days of its window start; otherwise `ValueError`
 
 ## Environment
 

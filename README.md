@@ -1,6 +1,6 @@
 # dm - Dual Momentum Calculator
 
-A CLI tool that implements the Dual Momentum investment strategy, scoring VOO (US equities) against VXUS (International equities) at each month-end close and rotating to VGIT (intermediate treasuries) when neither clears the risk-free rate.
+A CLI tool that implements the Dual Momentum investment strategy, scoring VOO (US equities) against VXUS (International equities) on trailing 1/3/6-month total returns as of the day you run it, and rotating to VGIT (intermediate treasuries) when neither clears the risk-free rate.
 
 ## The Strategy
 
@@ -10,14 +10,14 @@ The specific implementation reproduces [Portfolio Visualizer](https://www.portfo
 
 ### How It Works
 
-1. **Anchor on the last completed month end.** Signals are computed at month-end closes and held for the following month, so a mid-July run reports the June 30 signal.
-2. **Score each equity fund.** The momentum score is the weighted average of dividend-adjusted (total return) month-end-to-month-end returns over 1, 3, and 6 months, weighted **33% / 33% / 34%**.
+1. **Anchor on the latest close.** Each run evaluates the rule at the most recent close on or before the run date (shared by both funds), so it can be run any day — weekly, for example.
+2. **Score each equity fund.** The momentum score is the weighted average of dividend-adjusted (total return) trailing returns over 1, 3, and 6 months, weighted **33% / 33% / 34%**. An N-month return runs from the close on (or the last trading day before) the same calendar day N months earlier to the anchor close — run on Tuesday October 6 with Monday's close as the anchor, the 1-month window is September 5 → October 5, so the base is the Friday September 4 close.
 3. **Relative momentum.** The higher-scoring equity fund wins.
 4. **Absolute momentum.** If that winner's score is below the risk-free score — the 3-month Treasury bill return compounded over the same windows — the model holds VGIT instead.
 
 The model is always 100% in exactly one of VOO, VXUS, or VGIT. The rules-based approach removes emotional decision-making from the investment process, replacing gut feelings with systematic, repeatable analysis.
 
-> **When to run**: run `dm` on or after the 1st of the month to get the prior month's final signal. Running *on* the last calendar day of a month before that day's close is posted would silently anchor on the second-to-last trading day — over the 1997-2026 backtest, that one-day-early anchor would have flipped the signal in about 3% of months.
+**Month ends.** When the anchor is a month's final close (the month has ended, or no weekdays remain in it), the windows snap to prior month ends: a September 30 anchor measures from August 31, June 30, and March 31. On those days the result is exactly Portfolio Visualizer's month-end signal (see `--month-end` below).
 
 ## Installation
 
@@ -35,31 +35,32 @@ Example output:
 
 ```
 Dual Momentum Analysis
-As of: 2026-06-30 (month-end close)
+As of: 2026-10-05 (latest close, trailing windows)
+Windows from: 1M 2026-09-05, 3M 2026-07-05, 6M 2026-04-05
 ==============================================
 
 VOO:
-  1-Month:   -0.96%
-  3-Month:   15.27%
-  6-Month:   10.18%
-  Score:      8.18%
+  1-Month:    0.87%
+  3-Month:    4.28%
+  6-Month:   18.78%
+  Score:      8.08%
 
 VXUS:
-  1-Month:   -0.22%
-  3-Month:   11.36%
-  6-Month:   13.95%
-  Score:      8.42%
+  1-Month:   -2.72%
+  3-Month:    1.37%
+  6-Month:   11.50%
+  Score:      3.47%
 
 Risk-free (3-month T-bill):
-  1-Month:    0.30%
-  3-Month:    0.90%
-  6-Month:    1.81%
-  Score:      1.01%
+  1-Month:    0.31%
+  3-Month:    0.94%
+  6-Month:    1.85%
+  Score:      1.04%
 
 ==============================================
-Relative momentum: VXUS 8.42% beats VOO 8.18%
-Absolute momentum: VXUS 8.42% clears the risk-free 1.01% -> stay in the market
-Signal: VXUS (hold from 2026-06-30)
+Relative momentum: VOO 8.08% beats VXUS 3.47%
+Absolute momentum: VOO 8.08% clears the risk-free 1.04% -> stay in the market
+Signal: VOO (as of 2026-10-05)
 ```
 
 The `Signal:` line is stable and greppable:
@@ -68,38 +69,41 @@ The `Signal:` line is stable and greppable:
 uv run dm | grep '^Signal:'
 ```
 
-### `--now`: an intra-month preview
+`Windows from:` shows the calendar start date of each lookback; each base is
+the latest close on or before that date.
+
+### `--month-end`: Portfolio Visualizer's month-end signal
 
 ```bash
-uv run dm --now
+uv run dm --month-end
 ```
 
-Instead of anchoring on the last completed month end, `--now` evaluates the
-rule at the **latest available close** (the header reads `latest close`).
-Each lookback divides that close by the month-end closes 1, 3, and 6 months
-before the anchor's month, and the risk-free windows follow the anchor's month
-under the standard convention — so when the anchor is a month's final close,
-`--now` reproduces the default month-end signal exactly, and earlier in the
-month it shows what that signal is shaping up to be.
+Evaluates the rule only at the last completed month-end close, with
+month-end-to-month-end windows (header: `month-end close`; signal line:
+`hold from`). This is Portfolio Visualizer's own convention and the mode the
+`backtest/` suite validates against PV's trade history. A mid-month run reports
+the prior month end, so a run on October 6 reports September 30. On a month's
+last calendar day it reports that month only after 4:15pm ET, once the final
+close has posted.
 
-This is a *preview*, not the traded signal: the PV-parity methodology (and the
-backtest that validates it) is defined on completed month ends, so use the
-default mode for actual month-end rebalancing decisions.
+The default trailing mode is a weekly-run extension of that methodology: same
+weights, same risk-free construction, same decision rule, but measured on
+windows ending at the latest close. Away from month ends its returns will not
+match PV's (PV publishes month-end values only), and the backtest's parity
+claim covers the month-end mode.
 
-Two caveats when reading a mid-month preview:
+### Caveats
 
-- **Don't expect the returns to match Portfolio Visualizer's live signals
-  page.** PV's documented methodology is month-end only ("monthly changes are
-  based on the end-of-month adjusted close price"); how its paid
-  forward-signals view derives intra-month returns is unpublished and does not
-  use these month-end bases. Mid-month, the per-period returns and scores will
-  therefore differ from PV's — often by whole percentage points — even when
-  both agree on the signal. Parity is exact only at a month's final close.
-- **Early in a month, the risk-free leg runs ahead of the equities.** The
-  risk-free windows always cover whole calendar months, while the equity
-  lookbacks cover only the elapsed part of the anchor month. In the first days
-  of a month this leans the preview toward VGIT; the gap closes as the month
-  completes and vanishes at the final close.
+- **Today's close counts only once it has posted.** Before 4:15pm New York
+  time the run is dated the previous day, so a live mid-session quote is never
+  mistaken for a close. Run after 4:15pm ET to include today's close.
+- **Data gaps fail loudly.** If the latest shared close, or the latest close on
+  or before a window's start date, is more than 10 days old, the run raises an
+  error rather than silently reporting stale or stretched windows.
+- **Lagging data never snaps.** The month-end snapping applies only when no
+  series has a later bar in the anchor's month, so one fund missing the
+  month's final bar yields plain trailing windows, not a mislabeled month-end
+  signal.
 
 ## Configuration
 

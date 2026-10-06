@@ -95,6 +95,18 @@ class TestSignalIntegration:
 
         assert result.signal in {US_TICKER, INTL_TICKER, BOND_TICKER}
         assert result.relative_winner in {US_TICKER, INTL_TICKER}
+        # The trailing anchor is the latest close: within a long weekend.
+        assert today - relativedelta(days=6) <= result.as_of <= today
+        assert result.window_starts[1] >= today - relativedelta(months=1, days=6)
+        for returns in (result.us_returns, result.intl_returns, result.rf_returns):
+            assert set(returns) == {1, 3, 6}
+
+    def test_month_end_build_signal_anchors_on_a_month_end(self):
+        result = build_signal(date.today(), month_end=True)
+
+        today = date.today()
+
+        assert result.signal in {US_TICKER, INTL_TICKER, BOND_TICKER}
         # The anchor is a recent month end, never in the future.
         assert today - relativedelta(months=2) < result.as_of <= today
         for returns in (result.us_returns, result.intl_returns, result.rf_returns):
