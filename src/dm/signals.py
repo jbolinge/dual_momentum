@@ -24,7 +24,8 @@ from calendar import monthrange
 from dataclasses import dataclass, field
 from datetime import date, timedelta
 
-from dateutil.relativedelta import relativedelta
+from dateutil.easter import easter
+from dateutil.relativedelta import MO, relativedelta
 
 WEIGHTS: dict[int, float] = {1: 0.33, 3: 0.33, 6: 0.34}
 
@@ -102,8 +103,8 @@ def is_month_end_anchor(
 
     Never when any of `bar_series` has a bar later in the anchor's month (a
     lagging series). Otherwise true once the month has ended by `today`, or
-    when no weekday remains in the month after `anchor` (e.g. a Friday close
-    before a weekend month end).
+    when no trading day remains in the month after `anchor` (e.g. a Friday
+    close before a weekend or Memorial Day month end).
     """
     month_end = _last_calendar_day(anchor)
     if any(
@@ -113,7 +114,20 @@ def is_month_end_anchor(
     if month_end <= today:
         return True
     remaining = (anchor + timedelta(days=offset) for offset in range(1, 7))
-    return not any(day.weekday() < 5 for day in remaining if day.month == anchor.month)
+    return not any(
+        _is_trading_weekday(day) for day in remaining if day.month == anchor.month
+    )
+
+
+def _is_trading_weekday(day: date) -> bool:
+    """Weekday that is not one of the NYSE holidays able to fall in a month's
+    final days: Good Friday (late March/April) and Memorial Day (last Monday of
+    May). Other holidays never land among a month's last trading days."""
+    if day.weekday() >= 5:
+        return False
+    good_friday = easter(day.year) - timedelta(days=2)
+    memorial_day = date(day.year, 5, 31) + relativedelta(weekday=MO(-1))
+    return day not in (good_friday, memorial_day)
 
 
 def lookback_dates(anchor: date, month_end: bool) -> dict[int, date]:
@@ -203,10 +217,8 @@ def compute_signal(
     us_returns = _lookback_returns(us_by_month, anchor_month, us_ticker)
     intl_returns = _lookback_returns(intl_by_month, anchor_month, intl_ticker)
     as_of = us_by_month[anchor_month][0]
-    window_starts = {
-        months: _month_end_date(_shift_month(anchor_month, months))
-        for months in LOOKBACKS
-    }
+    step_dates = lookback_dates(as_of, month_end=True)
+    window_starts = {months: step_dates[months] for months in LOOKBACKS}
 
     return _build_result(
         as_of,

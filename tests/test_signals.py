@@ -555,6 +555,18 @@ class TestIsMonthEndAnchor:
     def test_earlier_weekday_is_not_a_month_end(self):
         assert not is_month_end_anchor(date(2026, 10, 29), date(2026, 10, 30))
 
+    def test_memorial_day_month_end(self):
+        """Mon May 31 2027 is Memorial Day: Fri May 28 is May's final close."""
+        assert is_month_end_anchor(date(2027, 5, 28), date(2027, 5, 29))
+
+    def test_good_friday_month_end(self):
+        """Fri Mar 29 2024 is Good Friday: Thu Mar 28 is March's final close."""
+        assert is_month_end_anchor(date(2024, 3, 28), date(2024, 3, 28))
+
+    def test_day_before_a_holiday_mid_month_is_not_a_month_end(self):
+        """Thu Apr 2 2026 precedes Good Friday Apr 3, but April trades on."""
+        assert not is_month_end_anchor(date(2026, 4, 2), date(2026, 4, 3))
+
     def test_holiday_month_end_once_the_month_is_over(self):
         """Good Friday 2024-03-29: Thu Mar 28 was March's final close."""
         assert is_month_end_anchor(date(2024, 3, 28), date(2024, 4, 1))
@@ -764,6 +776,19 @@ class TestComputeSignalTrailing:
 
         with pytest.raises(ValueError, match="stale"):
             compute_signal_trailing(old, old, self.RATES, _TRAIL_TODAY)
+
+    def test_memorial_day_month_end_uses_month_end_bases(self):
+        """Run Sat May 29 2027 on the Fri May 28 close: May is over in all but
+        name (Mon May 31 is Memorial Day), so the windows start at month ends."""
+        bars = _weekday_bars(date(2026, 10, 1), date(2027, 5, 28))
+        rates = _flat_rates(0.036, start=date(2026, 10, 1))
+        result = compute_signal_trailing(bars, bars, rates, date(2027, 5, 29))
+
+        assert result.window_starts == {
+            1: date(2027, 4, 30),
+            3: date(2027, 2, 28),
+            6: date(2026, 11, 30),
+        }
 
     def test_anchors_both_series_on_the_same_date(self):
         """A lagging series pulls both onto its latest close."""
